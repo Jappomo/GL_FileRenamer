@@ -1,3 +1,10 @@
+# ==============================================================
+# GL Batch Renamer Tool - ver.1.1
+# Compatible with Windows 10+ (Python 3)
+# Author: Giacomo Liberio - https://github.com/Jappomo
+# Description: A simple Batch Renamer of Files for Windows
+# ==============================================================
+
 import os
 import platform
 import tkinter as tk
@@ -100,15 +107,15 @@ tk.Button(root, text="Add Suffix", command=add_suffix_ui).grid(row=5, column=3, 
 
 # Dark/Light Mode Switch
 theme_switch = tk.Button(root, text="🌙 Toggle Dark Mode", command=toggle_theme)
-theme_switch.grid(row=6, column=1, columnspan=2, pady=15)
+theme_switch.grid(row=9, column=1, columnspan=2, pady=15)
 
 # Developed by + Version
-dev_label = tk.Label(root, text="Developed by Jappomo", fg="blue", cursor="hand2")
-dev_label.grid(row=7, column=0, columnspan=4, pady=(10, 0))
+dev_label = tk.Label(root, text="Developed by Giacomo Liberio", fg="blue", cursor="hand2")
+dev_label.grid(row=6, column=0, columnspan=4, pady=(10, 0))
 dev_label.bind("<Button-1>", open_github)
 
 version_label = tk.Label(root, text="Version 1.1v", fg="gray")
-version_label.grid(row=8, column=0, columnspan=4, pady=(2, 5))
+version_label.grid(row=7, column=0, columnspan=4, pady=(2, 5))
 
 # Apply initial theme
 apply_theme()
