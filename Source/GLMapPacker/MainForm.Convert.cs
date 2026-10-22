@@ -69,7 +69,8 @@ public partial class MainForm
 
 	private ThemedComboBox cvResolutionCombo;
 
-	private ThemedComboBox cvOutputCombo;
+	// 8-bit / 16-bit PNG output; follows the loaded file, click to override.
+	private SegmentedToggle cvBitToggle;
 
 	private FlatButton cvLoadBtn;
 
@@ -191,19 +192,19 @@ public partial class MainForm
 			QueueConvertPreview();
 		};
 		cvOutputCard.Controls.Add(cvResolutionCombo);
-		cvCapOut = CvLabel("Out", "File format");
+		cvCapOut = CvLabel("Out", "PNG bit depth");
 		cvOutputCard.Controls.Add(cvCapOut);
-		cvOutputCombo = new ThemedComboBox
+		cvBitToggle = new SegmentedToggle
 		{
+			Options = new string[2] { "8-bit", "16-bit" },
 			Width = Ui.S(122)
 		};
-		cvOutputCombo.Items.AddRange(new object[2] { "PNG 16-bit", "PNG 8-bit" });
-		cvOutputCombo.SelectedIndex = 0;
-		cvOutputCombo.SelectedIndexChanged += delegate
+		cvBitToggle.SelectedIndex = 1;
+		cvBitToggle.SelectedIndexChanged += delegate
 		{
 			UpdateConvertStatus();
 		};
-		cvOutputCard.Controls.Add(cvOutputCombo);
+		cvOutputCard.Controls.Add(cvBitToggle);
 		cvStatus = new Label
 		{
 			AutoSize = false,
@@ -347,8 +348,8 @@ public partial class MainForm
 		cvResolutionCombo.Location = new Point(x, cy + Ui.S(20));
 		x += cvResolutionCombo.Width + Ui.S(12);
 		cvCapOut.Location = new Point(x, cy);
-		cvOutputCombo.Location = new Point(x, cy + Ui.S(20));
-		x += cvOutputCombo.Width + Ui.S(16);
+		cvBitToggle.Location = new Point(x, cy + Ui.S(20));
+		x += cvBitToggle.Width + Ui.S(16);
 		int bx = pw - Pad - cvSaveBtn.Width;
 		int by = (outH - cvSaveBtn.Height) / 2;
 		cvSaveBtn.Location = new Point(bx, by);
@@ -379,6 +380,8 @@ public partial class MainForm
 			FloatImage img = await Task.Run(() => FloatImage.Load(path));
 			cvSource = img;
 			cvPath = path;
+			// Output bit depth starts at the source's; the toggle can still override it.
+			cvBitToggle.SelectedIndex = img.SourceBitDepth >= 16 ? 1 : 0;
 			cvProxy = null;
 			cvProxySide = -1;
 			cvSaveBtn.Enabled = true;
@@ -412,6 +415,8 @@ public partial class MainForm
 		}
 	}
 
+	private bool Convert16Bit => cvBitToggle.SelectedIndex == 1;
+
 	private Size ConvertOutputSize()
 	{
 		int idx = cvResolutionCombo.SelectedIndex;
@@ -427,7 +432,7 @@ public partial class MainForm
 			return;
 		}
 		Size o = ConvertOutputSize();
-		string bits = cvOutputCombo.SelectedIndex == 0 ? "16-bit" : "8-bit";
+		string bits = Convert16Bit ? "16-bit" : "8-bit";
 		cvStatus.Text = "Saves " + o.Width + "×" + o.Height + " • " + bits;
 	}
 
@@ -548,7 +553,7 @@ public partial class MainForm
 			}
 			path = saveFileDialog.FileName;
 		}
-		bool sixteen = cvOutputCombo.SelectedIndex == 0;
+		bool sixteen = Convert16Bit;
 		FloatImage source = cvSource;
 		Size outSize = ConvertOutputSize();
 		Progress<int> progress = new Progress<int>(delegate(int v)
