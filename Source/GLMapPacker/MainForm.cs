@@ -7,7 +7,7 @@ using System.Windows.Forms;
 
 namespace GLMapPacker;
 
-public class MainForm : Form
+public partial class MainForm : Form
 {
 	private Panel header;
 
@@ -22,6 +22,8 @@ public class MainForm : Form
 	private Panel pagePack;
 
 	private Panel pageUnpack;
+
+	private Panel pageConvert;
 
 	private Panel pageUtility;
 
@@ -168,10 +170,10 @@ public class MainForm : Form
 		tabs = new TabStrip
 		{
 			Location = new Point(24, 14),
-			Size = new Size(680, 40),
+			Size = new Size(760, 40),
 			PillWidth = 100
 		};
-		tabs.Tabs = new string[5] { "Pack", "Unpack", "Utility", "Renamer", "Injector" };
+		tabs.Tabs = new string[6] { "Pack", "Unpack", "Convert", "Utility", "Renamer", "Injector" };
 		tabs.SelectedIndexChanged += delegate
 		{
 			ShowPage(tabs.SelectedIndex);
@@ -201,11 +203,13 @@ public class MainForm : Form
 		};
 		BuildPackPage();
 		BuildUnpackPage();
+		BuildConvertPage();
 		BuildUtilityPage();
 		BuildRenamerPage();
 		BuildInjectorPage();
 		pageHost.Controls.Add(pagePack);
 		pageHost.Controls.Add(pageUnpack);
+		pageHost.Controls.Add(pageConvert);
 		pageHost.Controls.Add(pageUtility);
 		pageHost.Controls.Add(pageRenamer);
 		pageHost.Controls.Add(pageInjector);
@@ -215,9 +219,10 @@ public class MainForm : Form
 	{
 		pagePack.Visible = index == 0;
 		pageUnpack.Visible = index == 1;
-		pageUtility.Visible = index == 2;
-		pageRenamer.Visible = index == 3;
-		pageInjector.Visible = index == 4;
+		pageConvert.Visible = index == 2;
+		pageUtility.Visible = index == 3;
+		pageRenamer.Visible = index == 4;
+		pageInjector.Visible = index == 5;
 		if (tabs.SelectedIndex != index)
 		{
 			tabs.SelectedIndex = index;
@@ -1201,7 +1206,7 @@ public class MainForm : Form
 		header.BackColor = current.Surface;
 		toggleHint.ForeColor = current.TextMuted;
 		pageHost.BackColor = current.AppBackground;
-		Panel[] array = new Panel[5] { pagePack, pageUnpack, pageUtility, pageRenamer, pageInjector };
+		Panel[] array = new Panel[9] { pagePack, pageUnpack, pageConvert, cvPanelN2H, cvPanelH2N, cvPanelAO, pageUtility, pageRenamer, pageInjector };
 		foreach (Panel panel in array)
 		{
 			panel.BackColor = current.AppBackground;
@@ -1211,6 +1216,7 @@ public class MainForm : Form
 		LayoutHeader();
 		LayoutPackPage();
 		LayoutUnpackPage();
+		LayoutConvertPage();
 		LayoutUtilityPage();
 		LayoutRenamerPage();
 		LayoutInjectorPage();
@@ -1227,7 +1233,7 @@ public class MainForm : Form
 		{
 			if (control is Label label && !(control is LinkLabel))
 			{
-				if (label == toggleHint || label.Name == "presetLabel" || label.Name == "fmtLabel" || label.Name == "opLabel" || label.Name == "ufLabel" || label.Name == "shaderLabel" || label == injectorStatus || label == renameStatus)
+				if (label == toggleHint || label.Name == "presetLabel" || label.Name == "fmtLabel" || label.Name == "opLabel" || label.Name == "ufLabel" || label.Name == "shaderLabel" || label.Name.StartsWith("cvLabel") || label == cvStatus || label == injectorStatus || label == renameStatus)
 				{
 					label.ForeColor = p.TextMuted;
 				}
