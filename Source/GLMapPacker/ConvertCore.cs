@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -15,11 +16,30 @@ public static class ConvertCore
 		HeightToAO
 	}
 
+	// How Normal -> Height joins up the texture.
+	public enum Integration
+	{
+		// The whole image is one continuous surface (best for tiling textures).
+		Tileable,
+		// Each UV island from a mask or ID map is solved on its own.
+		Islands,
+		// UV islands and seams come from the low-poly model, so heights meet across seams.
+		Mesh
+	}
+
 	public sealed class Settings
 	{
 		public Mode Mode;
 
 		// Normal -> Height
+		public Integration Integration;
+
+		public FloatImage IslandMask;
+
+		public UvMesh Mesh;
+
+		public float FlattenBroad;
+
 		public float HeightIntensity = 1f;
 
 		public float Baseline = 0.5f;
@@ -67,9 +87,126 @@ public static class ConvertCore
 
 	// ---------------------------------------------------------------- Normal -> Height
 
-	// Integrates the normal map's slopes with an FFT Poisson solve (Frankot-Chellappa),
-	// which gives the least-squares height for the whole image at once instead of drifting like a line walk.
 	public static FloatImage NormalToHeight(FloatImage src, Settings s, double pxScale, IProgress<int> progress)
+	{
+		int w = src.Width;
+		int h = src.Height;
+		RawHeight raw = RawHeightFor(src, s, progress);
+		float[] data = (float[])raw.Height.Clone();
+		float sigma = (float)(s.SurfaceBlur * pxScale);
+		if (sigma > 0.05f)
+		{
+			if (raw.Valid == null)
+			{
+				GaussianBlur(data, w, h, sigma);
+			}
+			else
+			{
+				BoxBlur3(data, w, h, sigma, wrap: false, raw.Valid);
+			}
+		}
+		if (s.FlattenBroad > 0f)
+		{
+			// Detail-only height: subtract a wide blur, so broad ramps and bulges flatten out.
+			float[] broad = (float[])data.Clone();
+			BoxBlur3(broad, w, h, 0.05f * Math.Max(w, h), raw.Valid == null, raw.Valid);
+			for (int i = 0; i < data.Length; i++)
+			{
+				data[i] -= s.FlattenBroad * broad[i];
+			}
+		}
+		if (raw.Valid != null)
+		{
+			HeightSolver.FillInvalid(data, raw.Valid, w, h);
+		}
+		Report(progress, 92);
+		ShapeHeight(data, s);
+		FloatImage height = new FloatImage(w, h, 1);
+		Array.Copy(data, height.Data, data.Length);
+		Report(progress, 100);
+		return height;
+	}
+
+	// Which integration actually runs: the island and mesh modes fall back to the whole-image solve
+	// until their mask or model is supplied.
+	public static Integration EffectiveIntegration(Settings s)
+	{
+		if (s.Integration == Integration.Islands && s.IslandMask == null)
+		{
+			return Integration.Tileable;
+		}
+		if (s.Integration == Integration.Mesh && s.Mesh == null)
+		{
+			return Integration.Tileable;
+		}
+		return s.Integration;
+	}
+
+	private sealed class RawHeight
+	{
+		public FloatImage Source;
+
+		public Integration Integration;
+
+		public bool DirectX;
+
+		public object Data;
+
+		public float[] Height;
+
+		// Texels on an island; null when every texel counts (whole-image solve).
+		public bool[] Valid;
+	}
+
+	private static readonly object rawLock = new object();
+
+	private static readonly List<RawHeight> rawCache = new List<RawHeight>();
+
+	// The integration is the slow part and only depends on the source, mode, Y convention and the
+	// mask or mesh; the tone sliders reuse the cached result, so they stay instant.
+	private static RawHeight RawHeightFor(FloatImage src, Settings s, IProgress<int> progress)
+	{
+		Integration mode = EffectiveIntegration(s);
+		object data = mode == Integration.Islands ? (object)s.IslandMask : (mode == Integration.Mesh ? s.Mesh : null);
+		lock (rawLock)
+		{
+			RawHeight hit = rawCache.Find(r => r.Source == src && r.Integration == mode && r.DirectX == s.DirectX && r.Data == data);
+			if (hit != null)
+			{
+				return hit;
+			}
+		}
+		RawHeight raw = new RawHeight
+		{
+			Source = src,
+			Integration = mode,
+			DirectX = s.DirectX,
+			Data = data
+		};
+		if (mode == Integration.Tileable)
+		{
+			raw.Height = IntegrateFft(src, s.DirectX, progress);
+		}
+		else
+		{
+			HeightSolver.Result result = HeightSolver.Solve(src.Width, src.Height, (lw, lh) => BuildProblem(src, s, mode, lw, lh), progress, 5, 85);
+			raw.Height = result.Height;
+			raw.Valid = result.Valid;
+		}
+		lock (rawLock)
+		{
+			rawCache.Add(raw);
+			while (rawCache.Count > 2)
+			{
+				rawCache.RemoveAt(0);
+			}
+		}
+		return raw;
+	}
+
+	// Integrates the normal map's slopes with an FFT Poisson solve (Frankot-Chellappa): the least-squares
+	// height for the whole image at once, treating it as one continuous (tileable) surface.
+	private static float[] IntegrateFft(FloatImage src, bool directX, IProgress<int> progress)
 	{
 		int w = src.Width;
 		int h = src.Height;
@@ -79,23 +216,13 @@ public static class ConvertCore
 		float[] gxIm = new float[pw * ph];
 		float[] gyRe = new float[pw * ph];
 		float[] gyIm = new float[pw * ph];
-		int c = src.Channels;
 		for (int y = 0; y < h; y++)
 		{
 			for (int x = 0; x < w; x++)
 			{
-				int i = (y * w + x) * c;
-				float nx = src.Data[i] * 2f - 1f;
-				float ny = (c > 1 ? src.Data[i + 1] : 0.5f) * 2f - 1f;
-				float nz = (c > 2 ? src.Data[i + 2] : 1f) * 2f - 1f;
-				if (s.DirectX)
-				{
-					ny = -ny;
-				}
-				nz = Math.Max(nz, 0.05f);
-				// Tangent-space Y points up the image, rows go down: dh/drow = +ny/nz.
-				gxRe[y * pw + x] = -nx / nz;
-				gyRe[y * pw + x] = ny / nz;
+				Slopes(src, y * w + x, directX, out var sx, out var sy);
+				gxRe[y * pw + x] = sx;
+				gyRe[y * pw + x] = sy;
 			}
 		}
 		Report(progress, 10);
@@ -125,21 +252,155 @@ public static class ConvertCore
 			}
 		}
 		Fft2D(gxRe, gxIm, pw, ph, inverse: true);
-		Report(progress, 75);
-		FloatImage height = new FloatImage(w, h, 1);
+		Report(progress, 85);
+		float[] height = new float[w * h];
 		for (int y = 0; y < h; y++)
 		{
-			Array.Copy(gxRe, y * pw, height.Data, y * w, w);
+			Array.Copy(gxRe, y * pw, height, y * w, w);
 		}
-		float sigma = (float)(s.SurfaceBlur * pxScale);
-		if (sigma > 0.05f)
-		{
-			GaussianBlur(height.Data, w, h, sigma);
-		}
-		Report(progress, 90);
-		ShapeHeight(height.Data, s);
-		Report(progress, 100);
 		return height;
+	}
+
+	// Height change per pixel to the right (sx) and per pixel down (sy) from one normal-map texel.
+	// Tangent-space Y points up the image (OpenGL) and rows go down, so dh/drow = +ny/nz.
+	private static void Slopes(FloatImage src, int texel, bool directX, out float sx, out float sy)
+	{
+		int c = src.Channels;
+		int i = texel * c;
+		float nx = src.Data[i] * 2f - 1f;
+		float ny = (c > 1 ? src.Data[i + 1] : 0.5f) * 2f - 1f;
+		float nz = (c > 2 ? src.Data[i + 2] : 1f) * 2f - 1f;
+		if (directX)
+		{
+			ny = -ny;
+		}
+		nz = Math.Max(nz, 0.05f);
+		sx = -nx / nz;
+		sy = ny / nz;
+	}
+
+	// One level of the island / mesh problem. Heights are kept in the same units on every level
+	// (full-resolution pixels, or world units for a mesh) so coarse answers upsample directly.
+	private static HeightProblem BuildProblem(FloatImage src, Settings s, Integration mode, int lw, int lh)
+	{
+		FloatImage normals = (lw == src.Width && lh == src.Height) ? src : src.Resize(lw, lh);
+		HeightProblem p = new HeightProblem(lw, lh);
+		int n = lw * lh;
+		float[] sx = new float[n];
+		float[] sy = new float[n];
+		for (int i = 0; i < n; i++)
+		{
+			Slopes(normals, i, s.DirectX, out sx[i], out sy[i]);
+		}
+		// Per texel: which island it is on, and how much height one step right / down covers.
+		int[] island = new int[n];
+		float[] stepX = new float[n];
+		float[] stepY = new float[n];
+		UvMesh mesh = mode == Integration.Mesh ? s.Mesh : null;
+		UvMesh.Raster raster = null;
+		if (mesh != null)
+		{
+			raster = mesh.Rasterize(lw, lh);
+			for (int i = 0; i < n; i++)
+			{
+				int t = raster.Tri[i];
+				p.Valid[i] = t >= 0;
+				island[i] = t >= 0 ? mesh.TriIsland[t] : -1;
+				// World length of one texel step along U (right) and along -V (down).
+				stepX[i] = t >= 0 ? mesh.TriLenU[t] / lw : 0f;
+				stepY[i] = t >= 0 ? mesh.TriLenV[t] / lh : 0f;
+			}
+		}
+		else
+		{
+			FloatImage mask = s.IslandMask.Width == lw && s.IslandMask.Height == lh ? s.IslandMask : ResizeNearest(s.IslandMask, lw, lh);
+			float fx = (float)src.Width / lw;
+			float fy = (float)src.Height / lh;
+			for (int i = 0; i < n; i++)
+			{
+				int key = IslandKey(mask, i);
+				p.Valid[i] = key >= 0;
+				island[i] = key;
+				stepX[i] = fx;
+				stepY[i] = fy;
+			}
+		}
+		for (int y = 0; y < lh; y++)
+		{
+			for (int x = 0; x < lw; x++)
+			{
+				int i = y * lw + x;
+				if (!p.Valid[i])
+				{
+					continue;
+				}
+				if (x + 1 < lw && p.Valid[i + 1] && island[i + 1] == island[i])
+				{
+					p.LinkX[i] = true;
+					p.TargetX[i] = 0.5f * (sx[i] * stepX[i] + sx[i + 1] * stepX[i + 1]);
+				}
+				if (y + 1 < lh && p.Valid[i + lw] && island[i + lw] == island[i])
+				{
+					p.LinkY[i] = true;
+					p.TargetY[i] = 0.5f * (sy[i] * stepY[i] + sy[i + lw] * stepY[i + lw]);
+				}
+			}
+		}
+		if (mesh != null)
+		{
+			// Stitch UV seams: points along a seam are the same point on the model on both sides.
+			foreach (UvMesh.Seam seam in mesh.Seams)
+			{
+				int ia = mesh.TriIsland[seam.TriA];
+				int ib = mesh.TriIsland[seam.TriB];
+				float lenA = Math.Max(Math.Abs(seam.UA1 - seam.UA0) * lw, Math.Abs(seam.VA1 - seam.VA0) * lh);
+				float lenB = Math.Max(Math.Abs(seam.UB1 - seam.UB0) * lw, Math.Abs(seam.VB1 - seam.VB0) * lh);
+				int samples = Math.Max(1, Math.Min(4096, (int)Math.Ceiling(Math.Max(lenA, lenB))));
+				for (int k = 0; k < samples; k++)
+				{
+					float t = (k + 0.5f) / samples;
+					int a = mesh.FindTexel(raster, seam.UA0 + (seam.UA1 - seam.UA0) * t, seam.VA0 + (seam.VA1 - seam.VA0) * t, ia);
+					int b = mesh.FindTexel(raster, seam.UB0 + (seam.UB1 - seam.UB0) * t, seam.VB0 + (seam.VB1 - seam.VB0) * t, ib);
+					if (a >= 0 && b >= 0 && a != b)
+					{
+						p.Extra.Add(new HeightLink(a, b, 0f));
+					}
+				}
+			}
+		}
+		return p;
+	}
+
+	// Island id from a mask: black is gutter (-1); any other colour is an island, and different colours
+	// (an ID map) are different islands even where they touch.
+	private static int IslandKey(FloatImage mask, int texel)
+	{
+		int c = mask.Channels;
+		int i = texel * c;
+		float r = mask.Data[i];
+		float g = c >= 3 ? mask.Data[i + 1] : r;
+		float b = c >= 3 ? mask.Data[i + 2] : r;
+		if (r + g + b < 0.15f)
+		{
+			return -1;
+		}
+		return ((int)(r * 15.99f) << 8) | ((int)(g * 15.99f) << 4) | (int)(b * 15.99f);
+	}
+
+	private static FloatImage ResizeNearest(FloatImage src, int w, int h)
+	{
+		FloatImage dst = new FloatImage(w, h, src.Channels);
+		int c = src.Channels;
+		for (int y = 0; y < h; y++)
+		{
+			int sy = Math.Min(src.Height - 1, (int)((y + 0.5) * src.Height / h));
+			for (int x = 0; x < w; x++)
+			{
+				int sx = Math.Min(src.Width - 1, (int)((x + 0.5) * src.Width / w));
+				Array.Copy(src.Data, (sy * src.Width + sx) * c, dst.Data, (y * w + x) * c, c);
+			}
+		}
+		return dst;
 	}
 
 	// Puts the median (the most common, usually flat, surface) on the baseline, normalises by a robust
@@ -342,6 +603,81 @@ public static class ConvertCore
 		float c = img[y1 * w + x0];
 		float d = img[y1 * w + x1];
 		return a + (b - a) * tx + (c - a) * ty + (a - b - c + d) * tx * ty;
+	}
+
+	// Three box-blur passes, close to a Gaussian, at a cost that doesn't grow with the radius. With a
+	// mask, only island texels contribute and are changed (normalised by the covered weight).
+	public static void BoxBlur3(float[] data, int w, int h, float sigma, bool wrap, bool[] mask)
+	{
+		int r = Math.Max(1, (int)Math.Round((Math.Sqrt(4.0 * sigma * sigma + 1.0) - 1.0) / 2.0));
+		float[] weight = null;
+		if (mask != null)
+		{
+			weight = new float[data.Length];
+			for (int i = 0; i < data.Length; i++)
+			{
+				weight[i] = mask[i] ? 1f : 0f;
+				if (!mask[i])
+				{
+					data[i] = 0f;
+				}
+			}
+		}
+		for (int pass = 0; pass < 3; pass++)
+		{
+			BoxPass(data, w, h, r, wrap, horizontal: true);
+			BoxPass(data, w, h, r, wrap, horizontal: false);
+			if (weight != null)
+			{
+				BoxPass(weight, w, h, r, wrap, horizontal: true);
+				BoxPass(weight, w, h, r, wrap, horizontal: false);
+			}
+		}
+		if (weight != null)
+		{
+			for (int i = 0; i < data.Length; i++)
+			{
+				data[i] = mask[i] && weight[i] > 1e-6f ? data[i] / weight[i] : 0f;
+			}
+		}
+	}
+
+	private static void BoxPass(float[] data, int w, int h, int r, bool wrap, bool horizontal)
+	{
+		int len = horizontal ? w : h;
+		int lines = horizontal ? h : w;
+		float inv = 1f / (2 * r + 1);
+		Parallel.For(0, lines, () => new float[len], (line, _, buf) =>
+		{
+			for (int k = 0; k < len; k++)
+			{
+				buf[k] = data[horizontal ? line * w + k : k * w + line];
+			}
+			float sum = 0f;
+			for (int k = -r; k <= r; k++)
+			{
+				sum += At(buf, k, len, wrap);
+			}
+			for (int k = 0; k < len; k++)
+			{
+				data[horizontal ? line * w + k : k * w + line] = sum * inv;
+				sum += At(buf, k + r + 1, len, wrap) - At(buf, k - r, len, wrap);
+			}
+			return buf;
+		}, _ => { });
+	}
+
+	private static float At(float[] buf, int k, int len, bool wrap)
+	{
+		if (k >= 0 && k < len)
+		{
+			return buf[k];
+		}
+		if (wrap)
+		{
+			return buf[((k % len) + len) % len];
+		}
+		return 0f;
 	}
 
 	// Separable Gaussian with wrap-around edges (texture maps are usually tileable).

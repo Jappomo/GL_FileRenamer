@@ -49,6 +49,27 @@ public partial class MainForm
 
 	private ThemedComboBox cvN2HFormatCombo;
 
+	private ThemedSlider cvFlatten;
+
+	private ThemedComboBox cvIntegrationCombo;
+
+	private Label cvCapN2HFormat;
+
+	private Label cvCapIntegration;
+
+	private Label cvCapSourceFile;
+
+	// Island mask / ID map for the islands mode, and the low-poly model for the mesh-aware mode.
+	private FileDropBox cvMaskBox;
+
+	private FileDropBox cvMeshBox;
+
+	private Label cvIntegrationHint;
+
+	private FloatImage cvIslandMask;
+
+	private UvMesh cvMesh;
+
 	private ThemedSlider cvStrength;
 
 	private ThemedSlider cvSmoothing;
@@ -141,8 +162,49 @@ public partial class MainForm
 		cvBaseline = CvSlider("Mid-point baseline", 0.0, 1.0, 0.5, 2);
 		cvContrast = CvSlider("Contrast", -1.0, 1.0, 0.0, 2);
 		cvBlur = CvSlider("Surface blur", 0.0, 20.0, 0.0, 1, " px");
+		cvFlatten = CvSlider("Flatten broad shapes", 0.0, 100.0, 0.0, 0, "%");
 		cvN2HFormatCombo = CvYCombo();
-		cvPanelN2H = CvModePanel(cvIntensity, cvBaseline, cvContrast, cvBlur, CvLabel("N2HFmt", "Normal map format"), cvN2HFormatCombo);
+		cvCapN2HFormat = CvLabel("N2HFmt", "Normal map format");
+		cvCapIntegration = CvLabel("Integration", "Integration");
+		cvIntegrationCombo = new ThemedComboBox();
+		cvIntegrationCombo.Items.AddRange(new object[3] { "Tileable", "UV islands (mask)", "Mesh-aware (3D)" });
+		cvIntegrationCombo.SelectedIndex = 0;
+		cvIntegrationCombo.SelectedIndexChanged += delegate
+		{
+			LayoutN2HPanel();
+			QueueConvertPreview();
+		};
+		cvCapSourceFile = CvLabel("SourceFile", "");
+		cvMaskBox = new FileDropBox
+		{
+			Prompt = "Drop a UV snapshot or ID map",
+			Filter = "Images|*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff;*.tga|All files|*.*"
+		};
+		cvMaskBox.FileChanged += delegate
+		{
+			LoadIslandMask(cvMaskBox.FilePath);
+		};
+		cvMeshBox = new FileDropBox
+		{
+			Prompt = "Drop the low-poly model (.obj)",
+			Filter = "Wavefront OBJ|*.obj|All files|*.*"
+		};
+		cvMeshBox.FileChanged += delegate
+		{
+			LoadMesh(cvMeshBox.FilePath);
+		};
+		cvIntegrationHint = new Label
+		{
+			Name = "capCvHint",
+			AutoSize = false,
+			Font = Ui.Small
+		};
+		cvPanelN2H = new Panel
+		{
+			BackColor = Color.Transparent
+		};
+		cvPanelN2H.Controls.AddRange(new Control[13] { cvIntensity, cvBaseline, cvContrast, cvBlur, cvFlatten, cvCapN2HFormat, cvN2HFormatCombo, cvCapIntegration, cvIntegrationCombo, cvCapSourceFile, cvMaskBox, cvMeshBox, cvIntegrationHint });
+		LayoutN2HPanel();
 		cvStrength = CvSlider("Strength", 0.0, 20.0, 2.0, 2);
 		cvSmoothing = CvSlider("Smoothing", 0.0, 10.0, 0.0, 1, " px");
 		cvH2NFormatCombo = CvYCombo();
@@ -304,6 +366,112 @@ public partial class MainForm
 		return panel;
 	}
 
+	// Normal -> Height settings: tone sliders, then format and integration side by side, then the
+	// mask or model box when that integration needs one, and a one-line explanation.
+	private void LayoutN2HPanel()
+	{
+		int width = cvPanelN2H.Width;
+		int y = 0;
+		foreach (ThemedSlider slider in new ThemedSlider[5] { cvIntensity, cvBaseline, cvContrast, cvBlur, cvFlatten })
+		{
+			slider.Location = new Point(0, y);
+			slider.Width = width;
+			y += slider.Height + Ui.S(4);
+		}
+		y += Ui.S(4);
+		int half = (width - Ui.S(8)) / 2;
+		cvCapN2HFormat.Location = new Point(0, y);
+		cvCapIntegration.Location = new Point(half + Ui.S(8), y);
+		cvN2HFormatCombo.Location = new Point(0, y + Ui.S(20));
+		cvN2HFormatCombo.Width = half;
+		cvIntegrationCombo.Location = new Point(half + Ui.S(8), y + Ui.S(20));
+		cvIntegrationCombo.Width = width - half - Ui.S(8);
+		y = cvIntegrationCombo.Bottom + Ui.S(12);
+		int mode = cvIntegrationCombo.SelectedIndex;
+		cvMaskBox.Visible = mode == 1;
+		cvMeshBox.Visible = mode == 2;
+		cvCapSourceFile.Visible = mode != 0;
+		if (mode != 0)
+		{
+			cvCapSourceFile.Text = mode == 1 ? "Island mask" : "3D model (advanced)";
+			cvCapSourceFile.Location = new Point(0, y);
+			FileDropBox box = mode == 1 ? cvMaskBox : cvMeshBox;
+			box.Location = new Point(0, y + Ui.S(20));
+			box.Width = width;
+			y = box.Bottom + Ui.S(8);
+		}
+		cvIntegrationHint.Text = IntegrationHint(mode);
+		cvIntegrationHint.Location = new Point(0, y);
+		cvIntegrationHint.Size = new Size(width, Ui.S(34));
+		cvPanelN2H.Height = cvIntegrationHint.Bottom;
+	}
+
+	private string IntegrationHint(int mode)
+	{
+		switch (mode)
+		{
+		case 1:
+			return cvIslandMask == null ? "Add a UV snapshot (white on black) or an ID map. Until then the whole image is used." : "Each island keeps its own broad shape. Islands are levelled separately, so seams can differ.";
+		case 2:
+			return cvMesh == null ? "Add the low-poly OBJ with non-overlapping UVs. Until then the whole image is used." : "UV seams are stitched using the model, so heights meet across islands.";
+		default:
+			return "Treats the image as one continuous surface. Best for tiling textures.";
+		}
+	}
+
+	private async void LoadIslandMask(string path)
+	{
+		cvIslandMask = null;
+		if (!string.IsNullOrEmpty(path))
+		{
+			try
+			{
+				FloatImage mask = await Task.Run(() => FloatImage.Load(path));
+				cvIslandMask = mask;
+				cvMaskBox.Info = mask.Width + "×" + mask.Height;
+			}
+			catch (Exception ex)
+			{
+				Notifier.Error("Couldn't load the mask: " + ex.Message);
+				cvMaskBox.FilePath = null;
+				return;
+			}
+		}
+		LayoutN2HPanel();
+		QueueConvertPreview();
+	}
+
+	private async void LoadMesh(string path)
+	{
+		cvMesh = null;
+		if (!string.IsNullOrEmpty(path))
+		{
+			try
+			{
+				UvMesh mesh = await Task.Run(() => UvMesh.LoadObj(path));
+				int overlap = await Task.Run(() => mesh.Rasterize(512, 512).OverlapTexels);
+				cvMesh = mesh;
+				cvMeshBox.Info = mesh.TriangleCount.ToString("N0") + " tris • " + mesh.IslandCount + " islands";
+				if (overlap > 512 * 512 / 200)
+				{
+					Notifier.Warning(mesh.Name + " has overlapping UVs. Mesh-aware mode needs each part of the model on its own UV space; overlapped areas may come out wrong.");
+				}
+				else
+				{
+					Notifier.Success("Loaded " + mesh.Name + ": " + mesh.IslandCount + " UV islands, " + mesh.Seams.Count + " seam edges.");
+				}
+			}
+			catch (Exception ex)
+			{
+				Notifier.Error("Couldn't load the model: " + ex.Message);
+				cvMeshBox.FilePath = null;
+				return;
+			}
+		}
+		LayoutN2HPanel();
+		QueueConvertPreview();
+	}
+
 	private void ShowConvertMode()
 	{
 		int mode = cvModeCombo.SelectedIndex;
@@ -326,7 +494,10 @@ public partial class MainForm
 		cvSettingsCard.Size = new Size(side, height);
 		int y = Stack(cvCapMode, cvModeCombo, Pad, cvSettingsCard.ContentTop, inner);
 		Panel[] panels = new Panel[3] { cvPanelN2H, cvPanelH2N, cvPanelAO };
-		foreach (Panel p in panels)
+		cvPanelN2H.Location = new Point(Pad, y + Ui.S(4));
+		cvPanelN2H.Width = inner;
+		LayoutN2HPanel();
+		foreach (Panel p in new Panel[2] { cvPanelH2N, cvPanelAO })
 		{
 			p.Location = new Point(Pad, y + Ui.S(4));
 			p.Width = inner;
@@ -449,6 +620,15 @@ public partial class MainForm
 		s.Baseline = (float)cvBaseline.Value;
 		s.Contrast = (float)cvContrast.Value;
 		s.SurfaceBlur = (float)cvBlur.Value;
+		s.FlattenBroad = (float)(cvFlatten.Value / 100.0);
+		s.Integration = cvIntegrationCombo.SelectedIndex switch
+		{
+			1 => ConvertCore.Integration.Islands,
+			2 => ConvertCore.Integration.Mesh,
+			_ => ConvertCore.Integration.Tileable,
+		};
+		s.IslandMask = cvIslandMask;
+		s.Mesh = cvMesh;
 		s.NormalStrength = (float)cvStrength.Value;
 		s.NormalSmoothing = (float)cvSmoothing.Value;
 		s.InvertHeight = cvInvertChk.Checked;

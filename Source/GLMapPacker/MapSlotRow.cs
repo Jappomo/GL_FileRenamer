@@ -92,6 +92,7 @@ public class MapSlotRow : Control, IThemeable
 
 	public void ApplyTheme(Palette p)
 	{
+		clearBtn.Backdrop = p.SurfaceAlt;
 		Invalidate();
 	}
 

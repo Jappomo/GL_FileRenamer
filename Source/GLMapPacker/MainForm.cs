@@ -161,7 +161,7 @@ public partial class MainForm : Form
 	{
 		Text = "GL Map Packer";
 		Font = Ui.Body;
-		MinimumSize = Ui.S(960, 680);
+		MinimumSize = Ui.S(960, 740);
 		Rectangle work = Screen.PrimaryScreen.WorkingArea;
 		base.Size = new Size(Math.Min(Ui.S(1180), work.Width), Math.Min(Ui.S(820), work.Height));
 		base.StartPosition = FormStartPosition.CenterScreen;
@@ -1272,7 +1272,7 @@ public partial class MainForm : Form
 
 	// ---------------------------------------------------------------- shared
 
-	private static ImageCore.OutputFormat SelectedFormat(ComboBox combo)
+	private static ImageCore.OutputFormat SelectedFormat(ThemedComboBox combo)
 	{
 		return combo.SelectedIndex switch
 		{
