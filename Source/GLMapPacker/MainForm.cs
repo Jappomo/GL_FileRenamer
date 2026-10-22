@@ -1272,7 +1272,7 @@ public partial class MainForm : Form
 
 	// ---------------------------------------------------------------- shared
 
-	private static ImageCore.OutputFormat SelectedFormat(ComboBox combo)
+	private static ImageCore.OutputFormat SelectedFormat(ThemedComboBox combo)
 	{
 		return combo.SelectedIndex switch
 		{
