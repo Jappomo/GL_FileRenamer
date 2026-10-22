@@ -4,12 +4,12 @@ using System.Windows.Forms;
 
 namespace GLMapPacker;
 
-// Small caption above a themed text field.
+// Small caption above a themed text input.
 public class LabeledField : Panel, IThemeable
 {
 	private readonly Label label;
 
-	private readonly ThemedTextBox field;
+	private readonly ThemedTextBox input;
 
 	public string LabelText
 	{
@@ -27,15 +27,15 @@ public class LabeledField : Panel, IThemeable
 	{
 		get
 		{
-			return field.Text;
+			return input.Text;
 		}
 		set
 		{
-			field.Text = value;
+			input.Text = value;
 		}
 	}
 
-	public TextBox Box => field.Box;
+	public TextBox Box => input.Box;
 
 	public event EventHandler ValueChanged;
 
@@ -51,11 +51,11 @@ public class LabeledField : Panel, IThemeable
 			Location = new Point(0, 0),
 			Font = Ui.Small
 		};
-		field = new ThemedTextBox
+		input = new ThemedTextBox
 		{
 			Location = new Point(0, Ui.S(20))
 		};
-		field.TextChanged += delegate
+		input.TextChanged += delegate
 		{
 			if (this.ValueChanged != null)
 			{
@@ -63,10 +63,10 @@ public class LabeledField : Panel, IThemeable
 			}
 		};
 		base.Controls.Add(label);
-		base.Controls.Add(field);
+		base.Controls.Add(input);
 		base.Resize += delegate
 		{
-			field.Width = base.Width;
+			input.Width = base.Width;
 		};
 	}
 
