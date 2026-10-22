@@ -40,8 +40,15 @@ Also:
 
 **Requirements:** Windows 10 or 11 with .NET Framework 4.8. It's already installed on Windows 10 (version 1903 and later) and on Windows 11.
 
-1. Download [`GLMapPacker.exe`](GLMapPacker.exe) from this repository.
-2. Double-click it. There's nothing to install.
+### Download
+
+**[⬇ GLMapPacker-2.1.zip](releases/GLMapPacker-2.1.zip?raw=true)** (85 KB) contains:
+
+- `GLMapPacker.exe`: the app
+- `Injector.py`: the Maya importer for the Injector tab
+- `README.txt`: quick start
+
+Unzip it anywhere and double-click `GLMapPacker.exe`. There's nothing to install. If Windows SmartScreen warns about an unknown publisher, choose **More info → Run anyway**: the exe isn't code-signed.
 
 New to the tool? The **[tutorial](docs/TUTORIAL.md)** walks through every tab with screenshots.
 
