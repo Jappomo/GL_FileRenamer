@@ -19,7 +19,7 @@
 |---|---|
 | **Pack** | Combine up to four grayscale maps into the R, G, B and A channels of one texture (ORM, mask maps and so on). |
 | **Unpack** | Split a packed texture back into four grayscale channel images. |
-| **Convert** | Normal → Height, Height → Normal (Sobel) and Height → Ambient Occlusion (HBAO), with a live preview and 16-bit PNG output. |
+| **Convert** | Normal → Height (tileable, UV-island or mesh-aware with an OBJ, so heights meet across UV seams), Height → Normal (Sobel) and Height → Ambient Occlusion (HBAO), with a live preview and 16-bit PNG output. |
 | **Utility** | Flip the green channel (OpenGL ↔ DirectX normals), flip vertically or horizontally, or invert RGB. |
 | **Renamer** | Batch-rename a folder with search/replace, prefix, suffix and numbering, with a live preview before anything changes. |
 | **Injector** | Pick a material's texture maps and export a preset that `Injector.py` builds into a shading network in Maya. |
@@ -42,7 +42,7 @@ Also:
 
 ### Download
 
-**[⬇ GLMapPacker-2.1.zip](releases/GLMapPacker-2.1.zip?raw=true)** (85 KB) contains:
+**[⬇ GLMapPacker-2.1.zip](releases/GLMapPacker-2.1.zip?raw=true)** (about 100 KB) contains:
 
 - `GLMapPacker.exe`: the app
 - `Injector.py`: the Maya importer for the Injector tab
@@ -76,7 +76,9 @@ Source/
   GLMapPacker/
     MainForm.cs          window, header and the Pack/Unpack/Utility/Renamer/Injector tabs
     MainForm.Convert.cs  the Convert tab
-    ConvertCore.cs       Normal→Height (FFT Poisson), Height→Normal (Sobel), Height→AO (HBAO)
+    ConvertCore.cs       Normal→Height (FFT / island / mesh), Height→Normal (Sobel), Height→AO (HBAO)
+    HeightSolver.cs      coarse-to-fine least-squares height solve for islands and UV seams
+    UvMesh.cs            OBJ reader, UV islands, seams and texel rasterising
     FloatImage.cs        Float32 image, resampling
     PngIO.cs             8/16-bit PNG reader and writer
     ImageCore.cs         8-bit pack/split/flip and TGA/TIFF/BMP/JPEG saving
@@ -92,5 +94,6 @@ docs/
 ## Notes
 
 - **Bit depth.** Convert keeps 16-bit precision end to end. Pack, Unpack and Utility work at 8 bits per channel, and a 16-bit input on those tabs is reduced to 8-bit.
+- **Mesh-aware Normal → Height** reads OBJ files and needs non-overlapping UVs. It takes about 6 s at 2K and 20 to 30 s at 4K.
 - **AO speed.** Height → AO runs on the CPU across all cores, in about 1 to 2 s at 1024 px. A 4K save takes roughly 10 to 20 s, depending on the processor.
 - **Screenshots.** The images in this README were captured from a Linux preview build, so the fonts differ slightly from Windows (Segoe UI).

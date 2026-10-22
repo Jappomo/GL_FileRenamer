@@ -81,7 +81,7 @@ When you load a file, the mode is picked from its name: a file whose name contai
 
 ### Normal → Height
 
-Rebuilds a height map from a normal map's slopes. The whole image is solved at once (an FFT Poisson solve), so it doesn't drift or streak.
+Rebuilds a height map from a normal map's slopes, keeping both the fine detail and the broad shapes.
 
 ![Normal to height](images/convert-normal-to-height.png)
 
@@ -91,7 +91,36 @@ Rebuilds a height map from a normal map's slopes. The whole image is solved at o
 | **Mid-point baseline** | The gray level of the flat surface (0.5 = middle gray). Raise it if the map is mostly dents, lower it if it's mostly bumps. |
 | **Contrast** | Pushes heights toward the extremes (+) or flattens them (−), around the baseline. |
 | **Surface blur** | Smooths small imperfections in the normal map before they become height noise (in output pixels). |
+| **Flatten broad shapes** | Removes large, gentle shapes and keeps the detail. 0% keeps everything; 100% gives a detail-only height map. |
 | **Normal map format** | **OpenGL (Y+)** for Blender, Maya, Substance and most tools. **DirectX (Y−)** for Unreal and 3ds Max. If the result looks inverted, like hills where there should be holes, switch this. |
+| **Integration** | How the texture is joined up. See below. |
+
+#### Integration: tileable, UV islands or mesh-aware
+
+A normal map baked onto a model stores slopes **relative to each UV island's orientation**. If the converter treats the whole texture as one flat surface, islands affect each other through the gutters, and broad slopes on islands that are rotated in UV point in different directions on the model. The result is height that **steps at the seams**. Pick the integration that fits your texture:
+
+| Integration | Use it for | What you add |
+|---|---|---|
+| **Tileable** | Tiling materials and anything without UV islands. The whole image is one continuous surface. | Nothing |
+| **UV islands (mask)** | Baked maps when you want each island's broad shape kept. Each island is solved on its own and centred on the baseline, so heights at a seam can still differ. | A **UV mask**: islands filled white on black, or an **ID map** where each island has its own color |
+| **Mesh-aware (3D)** | Baked maps where heights must **meet across seams**, for example displacement. The model tells the converter which island edges are the same edge on the mesh and how big each texel is on the surface, so the whole model is solved as one continuous surface. | The **low-poly model** as `.obj` with UVs |
+
+![Mesh-aware settings](images/convert-integration-mesh.png)
+
+**Using mesh-aware mode:**
+
+1. Choose **Integration → Mesh-aware (3D)**. A **3D model** box appears below.
+2. Drop the low-poly model onto it, or click it to browse. Use the same mesh and UV set the normal map was baked on, exported as **OBJ with UVs**. Triangles, quads and n-gons are all fine.
+3. A message confirms how many UV islands and seams were found. The preview then updates, and **Save result** renders the full size.
+
+The difference, rendered back onto the model (the blue line is the UV seam between two islands, the right one rotated 90° in UV):
+
+![Seam comparison](images/seam-compare.png)
+
+> **Notes**
+> - Mesh-aware mode needs **non-overlapping UVs**. Mirrored or stacked islands share texels, so the app warns you if it finds overlaps.
+> - Solving takes about 0.5 s for the preview, 1 to 2 s at 1K, 6 s at 2K and 20 to 30 s at 4K. Moving the tone sliders afterwards is instant.
+> - Texels outside the islands (the gutter) are filled from the nearest island, so the result has padding for mipmaps.
 
 ### Height → Normal (Sobel)
 
