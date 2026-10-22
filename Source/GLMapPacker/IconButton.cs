@@ -13,6 +13,10 @@ public class IconButton : Button, IThemeable
 
 	public int CornerRadius { get; set; }
 
+	// Colour behind the button when it sits on something other than its parent's background
+	// (e.g. inside a painted field); null uses the parent's.
+	public Color? Backdrop { get; set; }
+
 	public IconButton()
 	{
 		CornerRadius = Ui.S(6);
@@ -62,7 +66,7 @@ public class IconButton : Button, IThemeable
 		Palette current = Theme.Current;
 		Graphics graphics = e.Graphics;
 		graphics.SmoothingMode = SmoothingMode.AntiAlias;
-		graphics.Clear(GfxUtil.ResolveBack(this));
+		graphics.Clear(Backdrop ?? GfxUtil.ResolveBack(this));
 		Rectangle rectangle = new Rectangle(0, 0, base.Width - 1, base.Height - 1);
 		Color color = pressed ? current.Accent : Theme.Mix(current.SurfaceAlt, Theme.Mix(current.SurfaceAlt, current.Accent, 0.25), hover.Value);
 		GfxUtil.FillRounded(graphics, rectangle, CornerRadius, color);
