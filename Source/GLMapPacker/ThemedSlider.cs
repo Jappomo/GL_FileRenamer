@@ -88,7 +88,7 @@ public class ThemedSlider : Control, IThemeable
 		max = maximum;
 		val = Math.Max(min, Math.Min(max, value));
 		DefaultValue = val;
-		base.Height = 46;
+		base.Height = Ui.S(46);
 	}
 
 	public void ApplyTheme(Palette p)
@@ -96,7 +96,7 @@ public class ThemedSlider : Control, IThemeable
 		Invalidate();
 	}
 
-	private Rectangle TrackRect => new Rectangle(8, 30, Math.Max(1, base.Width - 17), 4);
+	private Rectangle TrackRect => new Rectangle(Ui.S(8), Ui.S(31), Math.Max(1, base.Width - Ui.S(17)), Ui.S(4));
 
 	private void SetFromX(int x)
 	{
@@ -166,14 +166,12 @@ public class ThemedSlider : Control, IThemeable
 		Graphics graphics = e.Graphics;
 		graphics.SmoothingMode = SmoothingMode.AntiAlias;
 		graphics.Clear(GfxUtil.ResolveBack(this));
-		using (Font font = new Font("Segoe UI", 9.5f))
-		{
-			TextRenderer.DrawText(graphics, Caption, font, new Rectangle(0, 0, base.Width, 22), current.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
-			string text = val.ToString("F" + Decimals, CultureInfo.InvariantCulture) + Suffix;
-			TextRenderer.DrawText(graphics, text, font, new Rectangle(0, 0, base.Width, 22), current.TextMuted, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
-		}
+		Rectangle top = new Rectangle(0, 0, base.Width, Ui.S(22));
+		TextRenderer.DrawText(graphics, Caption, Ui.Body, top, current.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
+		string text = val.ToString("F" + Decimals, CultureInfo.InvariantCulture) + Suffix;
+		TextRenderer.DrawText(graphics, text, Ui.Body, top, val != DefaultValue ? current.Accent : current.TextMuted, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
 		Rectangle t = TrackRect;
-		using (GraphicsPath path = GfxUtil.RoundedRect(t, 2))
+		using (GraphicsPath path = GfxUtil.RoundedRect(t, t.Height / 2))
 		{
 			using SolidBrush brush = new SolidBrush(current.TrackBackground);
 			graphics.FillPath(brush, path);
@@ -182,17 +180,17 @@ public class ThemedSlider : Control, IThemeable
 		int thumbX = t.Left + (int)Math.Round(f * t.Width);
 		if (thumbX > t.Left)
 		{
-			using GraphicsPath path2 = GfxUtil.RoundedRect(new Rectangle(t.Left, t.Top, thumbX - t.Left, t.Height), 2);
+			using GraphicsPath path2 = GfxUtil.RoundedRect(new Rectangle(t.Left, t.Top, thumbX - t.Left, t.Height), t.Height / 2);
 			using SolidBrush brush2 = new SolidBrush(current.Accent);
 			graphics.FillPath(brush2, path2);
 		}
-		int r = (dragging || hover) ? 8 : 7;
+		int r = Ui.S((dragging || hover) ? 8 : 7);
 		Rectangle knob = new Rectangle(thumbX - r, t.Top + t.Height / 2 - r, r * 2, r * 2);
 		using (SolidBrush brush3 = new SolidBrush(current.Surface))
 		{
 			graphics.FillEllipse(brush3, knob);
 		}
-		using Pen pen = new Pen(current.Accent, 2f);
+		using Pen pen = new Pen(current.Accent, Ui.S(2f));
 		graphics.DrawEllipse(pen, knob);
 	}
 }

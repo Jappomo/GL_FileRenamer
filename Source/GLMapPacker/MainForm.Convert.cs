@@ -11,13 +11,25 @@ public partial class MainForm
 {
 	private const int CvPreviewSide = 512;
 
-	private const int CvColumnWidth = 320;
+	private static int CvColumnWidth => SideWidth - TitledCard.Pad * 2;
 
 	private static readonly int[] CvResolutions = new int[4] { 512, 1024, 2048, 4096 };
 
-	private PreviewBox cvSourcePreview;
+	private PreviewBox cvPreview;
 
-	private PreviewBox cvResultPreview;
+	private TitledCard cvSettingsCard;
+
+	private TitledCard cvOutputCard;
+
+	private Label cvCapMode;
+
+	private Label cvCapRes;
+
+	private Label cvCapOut;
+
+	private Bitmap cvSourceBitmap;
+
+	private Bitmap cvResultBitmap;
 
 	private ThemedComboBox cvModeCombo;
 
@@ -96,19 +108,22 @@ public partial class MainForm
 			cvPreviewTimer.Stop();
 			RunConvertPreview();
 		};
-		cvSourcePreview = new PreviewBox
+		cvPreview = new PreviewBox
 		{
-			EmptyText = "drop or load a normal / height map"
+			EmptyText = "Drop a normal or height map",
+			EmptyHint = "The live preview compares source and result; drag the divider",
+			AcceptsFiles = true,
+			CompareLabel = "Source",
+			ImageLabel = "Result"
 		};
-		cvResultPreview = new PreviewBox
-		{
-			EmptyText = "converted result appears here"
-		};
-		pageConvert.Controls.Add(CvLabel("cvLabelSource", "Source"));
-		pageConvert.Controls.Add(CvLabel("cvLabelResult", "Result"));
-		pageConvert.Controls.Add(cvSourcePreview);
-		pageConvert.Controls.Add(cvResultPreview);
-		pageConvert.Controls.Add(CvLabel("cvLabelMode", "Conversion"));
+		cvPreview.FileDropped += LoadConvertFile;
+		pageConvert.Controls.Add(cvPreview);
+		cvSettingsCard = Card("Conversion");
+		cvOutputCard = Card(null);
+		pageConvert.Controls.Add(cvSettingsCard);
+		pageConvert.Controls.Add(cvOutputCard);
+		cvCapMode = CvLabel("Mode", "Mode");
+		cvSettingsCard.Controls.Add(cvCapMode);
 		cvModeCombo = new ThemedComboBox
 		{
 			Width = CvColumnWidth
@@ -120,13 +135,13 @@ public partial class MainForm
 			ShowConvertMode();
 			QueueConvertPreview();
 		};
-		pageConvert.Controls.Add(cvModeCombo);
+		cvSettingsCard.Controls.Add(cvModeCombo);
 		cvIntensity = CvSlider("Height intensity", 0.0, 4.0, 1.0, 2);
 		cvBaseline = CvSlider("Mid-point baseline", 0.0, 1.0, 0.5, 2);
 		cvContrast = CvSlider("Contrast", -1.0, 1.0, 0.0, 2);
 		cvBlur = CvSlider("Surface blur", 0.0, 20.0, 0.0, 1, " px");
 		cvN2HFormatCombo = CvYCombo();
-		cvPanelN2H = CvModePanel(cvIntensity, cvBaseline, cvContrast, cvBlur, CvLabel("cvLabelN2HFmt", "Normal map format"), cvN2HFormatCombo);
+		cvPanelN2H = CvModePanel(cvIntensity, cvBaseline, cvContrast, cvBlur, CvLabel("N2HFmt", "Normal map format"), cvN2HFormatCombo);
 		cvStrength = CvSlider("Strength", 0.0, 20.0, 2.0, 2);
 		cvSmoothing = CvSlider("Smoothing", 0.0, 10.0, 0.0, 1, " px");
 		cvH2NFormatCombo = CvYCombo();
@@ -139,7 +154,7 @@ public partial class MainForm
 		{
 			QueueConvertPreview();
 		};
-		cvPanelH2N = CvModePanel(cvStrength, cvSmoothing, CvLabel("cvLabelH2NFmt", "Output format"), cvH2NFormatCombo, cvInvertChk);
+		cvPanelH2N = CvModePanel(cvStrength, cvSmoothing, CvLabel("H2NFmt", "Normal map format"), cvH2NFormatCombo, cvInvertChk);
 		cvAoRadius = CvSlider("Radius", 1.0, 128.0, 24.0, 0, " px");
 		cvAoDepth = CvSlider("Height depth", 0.0, 20.0, 3.0, 2);
 		cvAoIntensity = CvSlider("Intensity", 0.0, 3.0, 1.0, 2);
@@ -154,14 +169,15 @@ public partial class MainForm
 		{
 			QueueConvertPreview();
 		};
-		cvPanelAO = CvModePanel(cvAoRadius, cvAoDepth, cvAoIntensity, cvAoContrast, CvLabel("cvLabelAoQ", "Quality"), cvAoQualityCombo);
-		pageConvert.Controls.Add(cvPanelN2H);
-		pageConvert.Controls.Add(cvPanelH2N);
-		pageConvert.Controls.Add(cvPanelAO);
-		pageConvert.Controls.Add(CvLabel("cvLabelRes", "Output resolution"));
+		cvPanelAO = CvModePanel(cvAoRadius, cvAoDepth, cvAoIntensity, cvAoContrast, CvLabel("AoQ", "Quality"), cvAoQualityCombo);
+		cvSettingsCard.Controls.Add(cvPanelN2H);
+		cvSettingsCard.Controls.Add(cvPanelH2N);
+		cvSettingsCard.Controls.Add(cvPanelAO);
+		cvCapRes = CvLabel("Res", "Output resolution");
+		cvOutputCard.Controls.Add(cvCapRes);
 		cvResolutionCombo = new ThemedComboBox
 		{
-			Width = 150
+			Width = Ui.S(132)
 		};
 		cvResolutionCombo.Items.Add("Source size");
 		foreach (int r in CvResolutions)
@@ -174,11 +190,12 @@ public partial class MainForm
 			UpdateConvertStatus();
 			QueueConvertPreview();
 		};
-		pageConvert.Controls.Add(cvResolutionCombo);
-		pageConvert.Controls.Add(CvLabel("cvLabelOut", "File format"));
+		cvOutputCard.Controls.Add(cvResolutionCombo);
+		cvCapOut = CvLabel("Out", "File format");
+		cvOutputCard.Controls.Add(cvCapOut);
 		cvOutputCombo = new ThemedComboBox
 		{
-			Width = 150
+			Width = Ui.S(122)
 		};
 		cvOutputCombo.Items.AddRange(new object[2] { "PNG 16-bit", "PNG 8-bit" });
 		cvOutputCombo.SelectedIndex = 0;
@@ -186,22 +203,22 @@ public partial class MainForm
 		{
 			UpdateConvertStatus();
 		};
-		pageConvert.Controls.Add(cvOutputCombo);
+		cvOutputCard.Controls.Add(cvOutputCombo);
 		cvStatus = new Label
 		{
 			AutoSize = false,
-			Text = "",
-			Font = new Font("Segoe UI", 9f),
+			Text = "No map loaded",
+			Font = Ui.Small,
 			AutoEllipsis = true
 		};
-		pageConvert.Controls.Add(cvStatus);
+		cvOutputCard.Controls.Add(cvStatus);
 		cvProgress = new ThemedProgress();
-		pageConvert.Controls.Add(cvProgress);
+		cvOutputCard.Controls.Add(cvProgress);
 		cvLoadBtn = new FlatButton
 		{
 			Text = "Load map",
 			Role = FlatButton.ButtonRole.Secondary,
-			Width = 150
+			Width = Ui.S(130)
 		};
 		cvLoadBtn.Click += delegate
 		{
@@ -211,28 +228,15 @@ public partial class MainForm
 		{
 			Text = "Save result",
 			Role = FlatButton.ButtonRole.Accent,
-			Width = 158,
+			Width = Ui.S(150),
 			Enabled = false
 		};
 		cvSaveBtn.Click += async delegate
 		{
 			await SaveConvert();
 		};
-		pageConvert.Controls.Add(cvLoadBtn);
-		pageConvert.Controls.Add(cvSaveBtn);
-		pageConvert.AllowDrop = true;
-		pageConvert.DragEnter += delegate(object s, DragEventArgs e)
-		{
-			e.Effect = (e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None);
-		};
-		pageConvert.DragDrop += delegate(object s, DragEventArgs e)
-		{
-			string[] array = (string[])e.Data.GetData(DataFormats.FileDrop);
-			if (array != null && array.Length > 0)
-			{
-				LoadConvertFile(array[0]);
-			}
-		};
+		cvOutputCard.Controls.Add(cvLoadBtn);
+		cvOutputCard.Controls.Add(cvSaveBtn);
 		pageConvert.Resize += delegate
 		{
 			LayoutConvertPage();
@@ -240,14 +244,15 @@ public partial class MainForm
 		ShowConvertMode();
 	}
 
-	private Label CvLabel(string name, string text)
+	// Muted caption (the "cap" name prefix is what StyleLabels keys on).
+	private static Label CvLabel(string name, string text)
 	{
 		return new Label
 		{
-			Name = name,
+			Name = "capCv" + name,
 			AutoSize = true,
 			Text = text,
-			Font = new Font("Segoe UI", 9f)
+			Font = Ui.Small
 		};
 	}
 
@@ -280,15 +285,19 @@ public partial class MainForm
 	}
 
 	// Stacks the given controls top to bottom; a label sits tight above the control after it.
+	// The panel is transparent so it shows the card's surface behind it.
 	private static Panel CvModePanel(params Control[] controls)
 	{
-		Panel panel = new Panel();
+		Panel panel = new Panel
+		{
+			BackColor = Color.Transparent
+		};
 		int y = 0;
 		foreach (Control c in controls)
 		{
 			c.Location = new Point(0, y);
 			panel.Controls.Add(c);
-			y += (c is Label) ? 20 : ((c is ComboBox) ? 42 : (c.Height + 10));
+			y += (c is Label) ? Ui.S(20) : (c.Height + Ui.S(10));
 		}
 		panel.Size = new Size(CvColumnWidth, y);
 		return panel;
@@ -310,37 +319,45 @@ public partial class MainForm
 		}
 		int width = pageConvert.Width;
 		int height = pageConvert.Height;
-		int col = CvColumnWidth;
-		pageConvert.Controls["cvLabelMode"].Location = new Point(0, 0);
-		cvModeCombo.Location = new Point(0, 20);
-		int y = 20 + cvModeCombo.Height + 18;
-		int panelH = Math.Max(cvPanelN2H.Height, Math.Max(cvPanelH2N.Height, cvPanelAO.Height));
+		int side = SideWidth;
+		int inner = side - Pad * 2;
+		cvSettingsCard.Location = new Point(0, 0);
+		cvSettingsCard.Size = new Size(side, height);
+		int y = Stack(cvCapMode, cvModeCombo, Pad, cvSettingsCard.ContentTop, inner);
 		Panel[] panels = new Panel[3] { cvPanelN2H, cvPanelH2N, cvPanelAO };
 		foreach (Panel p in panels)
 		{
-			p.Location = new Point(0, y);
+			p.Location = new Point(Pad, y + Ui.S(4));
+			p.Width = inner;
+			foreach (Control c in p.Controls)
+			{
+				c.Width = inner;
+			}
 		}
-		y += panelH + 8;
-		pageConvert.Controls["cvLabelRes"].Location = new Point(0, y);
-		pageConvert.Controls["cvLabelOut"].Location = new Point(col - cvOutputCombo.Width, y);
-		cvResolutionCombo.Location = new Point(0, y + 20);
-		cvOutputCombo.Location = new Point(col - cvOutputCombo.Width, y + 20);
-		int by = height - cvSaveBtn.Height;
-		cvLoadBtn.Location = new Point(0, by);
-		cvSaveBtn.Location = new Point(col - cvSaveBtn.Width, by);
-		cvProgress.Location = new Point(0, by - 20);
-		cvProgress.Size = new Size(col, 8);
-		cvStatus.Location = new Point(0, by - 46);
-		cvStatus.Size = new Size(col, 20);
-		int px = col + 24;
-		int gap = 14;
-		int pw = Math.Max(80, (width - px - gap) / 2);
-		pageConvert.Controls["cvLabelSource"].Location = new Point(px, 0);
-		pageConvert.Controls["cvLabelResult"].Location = new Point(px + pw + gap, 0);
-		cvSourcePreview.Location = new Point(px, 22);
-		cvSourcePreview.Size = new Size(pw, Math.Max(80, height - 22));
-		cvResultPreview.Location = new Point(px + pw + gap, 22);
-		cvResultPreview.Size = new Size(pw, Math.Max(80, height - 22));
+		int px = side + Gap;
+		int pw = width - px;
+		int outH = Ui.S(84);
+		cvOutputCard.Location = new Point(px, height - outH);
+		cvOutputCard.Size = new Size(pw, outH);
+		cvPreview.Location = new Point(px, 0);
+		cvPreview.Size = new Size(pw, height - outH - Gap);
+		int x = Pad;
+		int cy = Ui.S(14);
+		cvCapRes.Location = new Point(x, cy);
+		cvResolutionCombo.Location = new Point(x, cy + Ui.S(20));
+		x += cvResolutionCombo.Width + Ui.S(12);
+		cvCapOut.Location = new Point(x, cy);
+		cvOutputCombo.Location = new Point(x, cy + Ui.S(20));
+		x += cvOutputCombo.Width + Ui.S(16);
+		int bx = pw - Pad - cvSaveBtn.Width;
+		int by = (outH - cvSaveBtn.Height) / 2;
+		cvSaveBtn.Location = new Point(bx, by);
+		cvLoadBtn.Location = new Point(bx - Ui.S(8) - cvLoadBtn.Width, by);
+		int sw = Math.Max(Ui.S(60), cvLoadBtn.Left - Ui.S(16) - x);
+		cvStatus.Location = new Point(x, cy + Ui.S(16));
+		cvStatus.Size = new Size(sw, Ui.S(20));
+		cvProgress.Location = new Point(x, cy + Ui.S(42));
+		cvProgress.Width = sw;
 	}
 
 	private void LoadConvert()
@@ -371,8 +388,8 @@ public partial class MainForm
 		}
 		catch (Exception ex)
 		{
-			cvStatus.Text = "";
-			MessageBox.Show("Couldn't load:" + Environment.NewLine + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Hand);
+			UpdateConvertStatus();
+			Notifier.Error("Couldn't load: " + ex.Message);
 		}
 		finally
 		{
@@ -406,12 +423,12 @@ public partial class MainForm
 	{
 		if (cvSource == null)
 		{
-			cvStatus.Text = "";
+			cvStatus.Text = "No map loaded";
 			return;
 		}
 		Size o = ConvertOutputSize();
 		string bits = cvOutputCombo.SelectedIndex == 0 ? "16-bit" : "8-bit";
-		cvStatus.Text = cvSource.Width + "×" + cvSource.Height + " " + cvSource.SourceBitDepth + "-bit  →  " + o.Width + "×" + o.Height + " " + bits + " PNG";
+		cvStatus.Text = "Saves " + o.Width + "×" + o.Height + " • " + bits;
 	}
 
 	private ConvertCore.Settings CurrentConvertSettings()
@@ -477,7 +494,16 @@ public partial class MainForm
 				}
 				cvProxy = proxy;
 				cvProxySide = proxySide;
-				SetPreviewImage(cvSourcePreview, proxy.ToBitmap());
+				Bitmap old = cvSourceBitmap;
+				cvSourceBitmap = proxy.ToBitmap();
+				cvPreview.CompareImage = cvSourceBitmap;
+				if (cvResultBitmap == null)
+				{
+					cvPreview.Image = cvSourceBitmap;
+				}
+				old?.Dispose();
+				cvPreview.InfoText = source.Width + "×" + source.Height + " • " + source.SourceBitDepth + "-bit source";
+				cvPreview.PixelRatio = (float)source.Width / proxy.Width;
 			}
 			FloatImage input = cvProxy;
 			double pxScale = (double)input.Width / outSize.Width;
@@ -486,19 +512,15 @@ public partial class MainForm
 			{
 				return;
 			}
-			SetPreviewImage(cvResultPreview, result.ToBitmap());
+			Bitmap oldResult = cvResultBitmap;
+			cvResultBitmap = result.ToBitmap();
+			cvPreview.Image = cvResultBitmap;
+			oldResult?.Dispose();
 		}
 		catch (Exception ex)
 		{
-			cvStatus.Text = "Preview failed: " + ex.Message;
+			Notifier.Error("Preview failed: " + ex.Message);
 		}
-	}
-
-	private static void SetPreviewImage(PreviewBox box, Bitmap bmp)
-	{
-		Image old = box.Image;
-		box.Image = bmp;
-		old?.Dispose();
 	}
 
 	private async Task SaveConvert()
@@ -544,11 +566,11 @@ public partial class MainForm
 				FloatImage result = ConvertCore.Run(input, settings, 1.0, progress);
 				PngIO.Write(path, result, sixteen);
 			});
-			cvStatus.Text = "Saved " + Path.GetFileName(path);
+			Notifier.Success("Saved " + Path.GetFileName(path) + " (" + outSize.Width + "×" + outSize.Height + ", " + (sixteen ? "16" : "8") + "-bit)");
 		}
 		catch (Exception ex)
 		{
-			MessageBox.Show("Save failed:" + Environment.NewLine + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Hand);
+			Notifier.Error("Save failed: " + ex.Message);
 		}
 		finally
 		{

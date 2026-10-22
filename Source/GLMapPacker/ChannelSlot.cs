@@ -44,8 +44,8 @@ public class ChannelSlot : TitledCard
 		ChannelName = channelName;
 		DotColor = dotColor;
 		base.Title = null;
-		base.CornerRadius = 12;
-		base.Padding = new Padding(12);
+		base.CornerRadius = Ui.S(12);
+		base.Padding = new Padding(Ui.S(12));
 		Build();
 		AllowDrop = true;
 		base.DragEnter += OnDragEnter;
@@ -57,27 +57,27 @@ public class ChannelSlot : TitledCard
 		dot = new Label
 		{
 			AutoSize = false,
-			Size = new Size(12, 12),
-			Location = new Point(14, 15)
+			Size = Ui.S(12, 12),
+			Location = new Point(Ui.S(16), Ui.S(17))
 		};
 		dot.Paint += delegate(object s, PaintEventArgs e)
 		{
 			e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			using SolidBrush brush = new SolidBrush(DotColor);
-			e.Graphics.FillEllipse(brush, 0, 0, 11, 11);
+			e.Graphics.FillEllipse(brush, 0, 0, dot.Width - 1, dot.Height - 1);
 		};
 		nameLabel = new Label
 		{
 			AutoSize = true,
 			Text = ChannelName,
-			Location = new Point(32, 12),
-			Font = new Font("Segoe UI Semibold", 10f, FontStyle.Bold)
+			Location = new Point(Ui.S(34), Ui.S(13)),
+			Font = Ui.Strong
 		};
 		clearBtn = new IconButton
 		{
 			Text = "×",
-			Size = new Size(24, 24),
-			Font = new Font("Segoe UI", 12f)
+			Size = Ui.S(26, 26),
+			Font = Ui.Font(12f)
 		};
 		clearBtn.Click += delegate
 		{
@@ -85,8 +85,12 @@ public class ChannelSlot : TitledCard
 		};
 		preview = new PreviewBox
 		{
-			EmptyText = "drop image"
+			EmptyText = "Drop image",
+			EmptyHint = "or double-click to browse",
+			Interactive = false,
+			AcceptsFiles = true
 		};
+		preview.FileDropped += LoadFile;
 		pick = new ThemedComboBox();
 		pick.Items.AddRange(new object[6] { "Use red", "Use green", "Use blue", "Use alpha", "Constant white", "Constant black" });
 		pick.SelectedIndex = 0;
@@ -119,14 +123,14 @@ public class ChannelSlot : TitledCard
 
 	private void Relayout()
 	{
-		int num = 12;
-		clearBtn.Location = new Point(base.Width - clearBtn.Width - num, 10);
-		int num2 = 38;
-		int num3 = 28;
+		int num = Ui.S(12);
+		clearBtn.Location = new Point(base.Width - clearBtn.Width - num, Ui.S(10));
+		int num2 = Ui.S(44);
+		int num3 = pick.Height;
 		preview.Location = new Point(num, num2);
-		preview.Size = new Size(base.Width - num * 2, base.Height - num2 - num3 - num - 6);
-		pick.Location = new Point(num, base.Height - num3 - num + 2);
-		pick.Size = new Size(base.Width - num * 2, num3);
+		preview.Size = new Size(base.Width - num * 2, Math.Max(Ui.S(40), base.Height - num2 - num3 - num - Ui.S(10)));
+		pick.Location = new Point(num, base.Height - num3 - num);
+		pick.Width = base.Width - num * 2;
 	}
 
 	public void LoadDialog()
@@ -165,7 +169,7 @@ public class ChannelSlot : TitledCard
 		}
 		catch (Exception ex)
 		{
-			MessageBox.Show("Couldn't load that image:" + Environment.NewLine + ex.Message, "Load failed", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+			Notifier.Error("Couldn't load " + System.IO.Path.GetFileName(path) + ": " + ex.Message);
 		}
 	}
 

@@ -26,7 +26,7 @@ public class ThemedProgress : Control, IThemeable
 	{
 		SetStyle(ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, value: true);
 		BackColor = Color.Transparent;
-		base.Height = 8;
+		base.Height = Ui.S(6);
 	}
 
 	public void ApplyTheme(Palette p)
@@ -40,8 +40,9 @@ public class ThemedProgress : Control, IThemeable
 		Graphics graphics = e.Graphics;
 		graphics.SmoothingMode = SmoothingMode.AntiAlias;
 		graphics.Clear(GfxUtil.ResolveBack(this));
-		Rectangle r = new Rectangle(0, (base.Height - 8) / 2, base.Width - 1, 7);
-		using (GraphicsPath path = GfxUtil.RoundedRect(r, 3))
+		int h = Ui.S(6);
+		Rectangle r = new Rectangle(0, (base.Height - h) / 2, base.Width - 1, h - 1);
+		using (GraphicsPath path = GfxUtil.RoundedRect(r, h / 2))
 		{
 			using SolidBrush brush = new SolidBrush(current.TrackBackground);
 			graphics.FillPath(brush, path);
@@ -51,12 +52,12 @@ public class ThemedProgress : Control, IThemeable
 			return;
 		}
 		int num = (int)((double)(base.Width - 1) * ((double)val / 100.0));
-		if (num < 6)
+		if (num < h)
 		{
-			num = 6;
+			num = h;
 		}
-		Rectangle r2 = new Rectangle(0, r.Y, num, 7);
-		using GraphicsPath path2 = GfxUtil.RoundedRect(r2, 3);
+		Rectangle r2 = new Rectangle(0, r.Y, num, h - 1);
+		using GraphicsPath path2 = GfxUtil.RoundedRect(r2, h / 2);
 		using SolidBrush brush2 = new SolidBrush(current.Accent);
 		graphics.FillPath(brush2, path2);
 	}

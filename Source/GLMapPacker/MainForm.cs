@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -9,15 +10,19 @@ namespace GLMapPacker;
 
 public partial class MainForm : Form
 {
+	private const string AppVersion = "2.1";
+
 	private Panel header;
 
 	private ThemeToggle toggle;
 
-	private Label toggleHint;
-
 	private TabStrip tabs;
 
 	private Panel pageHost;
+
+	private StatusBar statusBar;
+
+	private Toast toast;
 
 	private Panel pagePack;
 
@@ -39,6 +44,8 @@ public partial class MainForm : Form
 
 	private PreviewBox packResult;
 
+	private TitledCard packCard;
+
 	private FlatButton packBtn;
 
 	private FlatButton packSaveBtn;
@@ -48,6 +55,8 @@ public partial class MainForm : Form
 	private Bitmap packedImage;
 
 	private ThemedProgress packProgress;
+
+	private TitledCard unpackCard;
 
 	private PreviewBox unpackSource;
 
@@ -69,6 +78,8 @@ public partial class MainForm : Form
 
 	private ThemedProgress unpackProgress;
 
+	private TitledCard utilCard;
+
 	private PreviewBox utilPreview;
 
 	private FlatButton utilLoadBtn;
@@ -83,9 +94,15 @@ public partial class MainForm : Form
 
 	private Bitmap utilImage;
 
+	private Bitmap utilOriginal;
+
 	private string utilPath;
 
 	private Panel pageRenamer;
+
+	private TitledCard renameRulesCard;
+
+	private TitledCard renamePreviewCard;
 
 	private LabeledField dirField;
 
@@ -113,6 +130,10 @@ public partial class MainForm : Form
 
 	private Panel pageInjector;
 
+	private TitledCard injectorMapsCard;
+
+	private TitledCard injectorMaterialCard;
+
 	private Dictionary<MapType, MapSlotRow> slotRows;
 
 	private ThemedComboBox shaderCombo;
@@ -129,18 +150,49 @@ public partial class MainForm : Form
 
 	private List<RenameEngine.Item> currentPlan;
 
+	// Shared layout metrics (96 DPI values, scaled).
+	private static int Gap => Ui.S(16);
+
+	private static int SideWidth => Ui.S(320);
+
+	private static int Pad => TitledCard.Pad;
+
 	public MainForm()
 	{
 		Text = "GL Map Packer";
-		MinimumSize = new Size(1000, 720);
-		base.Size = new Size(1120, 800);
+		Font = Ui.Body;
+		MinimumSize = Ui.S(960, 680);
+		Rectangle work = Screen.PrimaryScreen.WorkingArea;
+		base.Size = new Size(Math.Min(Ui.S(1180), work.Width), Math.Min(Ui.S(820), work.Height));
 		base.StartPosition = FormStartPosition.CenterScreen;
-		Font = new Font("Segoe UI", 9.5f);
 		DoubleBuffered = true;
+		try
+		{
+			Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+		}
+		catch (Exception)
+		{
+		}
 		BuildHeader();
 		BuildPages();
+		statusBar = new StatusBar
+		{
+			Dock = DockStyle.Bottom,
+			RightText = "GL Map Packer " + AppVersion + "  •  Float32 processing  •  16-bit PNG"
+		};
+		toast = new Toast
+		{
+			BottomOffset = statusBar.Height
+		};
+		base.Controls.Add(toast);
 		base.Controls.Add(pageHost);
 		base.Controls.Add(header);
+		base.Controls.Add(statusBar);
+		base.Resize += delegate
+		{
+			toast.Reposition();
+		};
+		Notifier.Posted += OnNotice;
 		Theme.ThemeChanged += delegate
 		{
 			ApplyTheme();
@@ -149,36 +201,45 @@ public partial class MainForm : Form
 		ShowPage(0);
 	}
 
+	protected override void OnHandleCreated(EventArgs e)
+	{
+		base.OnHandleCreated(e);
+		Ui.ApplyWindowFrame(this, Theme.Current);
+	}
+
+	protected override void OnFormClosed(FormClosedEventArgs e)
+	{
+		Notifier.Posted -= OnNotice;
+		base.OnFormClosed(e);
+	}
+
+	private void OnNotice(NoticeKind kind, string message)
+	{
+		statusBar.SetMessage(kind, message);
+		toast.Show(kind, message);
+	}
+
+	// ---------------------------------------------------------------- header
+
 	private void BuildHeader()
 	{
 		header = new Panel
 		{
 			Dock = DockStyle.Top,
-			Height = 62
+			Height = Ui.S(64)
 		};
-		toggleHint = new Label
-		{
-			AutoSize = true,
-			Text = "Theme",
-			Font = new Font("Segoe UI", 9f)
-		};
+		header.Paint += PaintHeader;
 		toggle = new ThemeToggle();
 		toggle.Toggled += delegate
 		{
 			ApplyTheme();
 		};
-		tabs = new TabStrip
-		{
-			Location = new Point(24, 14),
-			Size = new Size(760, 40),
-			PillWidth = 100
-		};
+		tabs = new TabStrip();
 		tabs.Tabs = new string[6] { "Pack", "Unpack", "Convert", "Utility", "Renamer", "Injector" };
 		tabs.SelectedIndexChanged += delegate
 		{
 			ShowPage(tabs.SelectedIndex);
 		};
-		header.Controls.Add(toggleHint);
 		header.Controls.Add(toggle);
 		header.Controls.Add(tabs);
 		header.Resize += delegate
@@ -187,19 +248,52 @@ public partial class MainForm : Form
 		};
 	}
 
+	private static int BrandWidth => Ui.S(214);
+
 	private void LayoutHeader()
 	{
-		int num = header.Width - 28;
-		toggle.Location = new Point(num - toggle.Width, (header.Height - toggle.Height) / 2);
-		toggleHint.Location = new Point(toggle.Left - toggleHint.Width - 10, toggle.Top + (toggle.Height - toggleHint.Height) / 2);
+		tabs.Location = new Point(BrandWidth, (header.Height - tabs.Height) / 2);
+		toggle.Location = new Point(header.Width - Ui.S(24) - toggle.Width, (header.Height - toggle.Height) / 2);
 	}
+
+	// App mark (a 2x2 grid of channel colours) and name, plus the header's bottom border.
+	private void PaintHeader(object sender, PaintEventArgs e)
+	{
+		Palette p = Theme.Current;
+		Graphics g = e.Graphics;
+		g.SmoothingMode = SmoothingMode.AntiAlias;
+		DrawAppMark(g, new Rectangle(Ui.S(24), (header.Height - Ui.S(30)) / 2, Ui.S(30), Ui.S(30)));
+		TextRenderer.DrawText(g, "GL Map Packer", Ui.Font(12f, semibold: true), new Rectangle(Ui.S(64), 0, BrandWidth - Ui.S(64), header.Height), p.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+		using Pen pen = new Pen(p.Border);
+		g.DrawLine(pen, 0, header.Height - 1, header.Width, header.Height - 1);
+	}
+
+	public static void DrawAppMark(Graphics g, Rectangle r)
+	{
+		int gap = Math.Max(1, r.Width / 12);
+		int cell = (r.Width - gap) / 2;
+		Color[] colors = new Color[4]
+		{
+			Color.FromArgb(232, 84, 80),
+			Color.FromArgb(108, 196, 92),
+			Color.FromArgb(66, 133, 255),
+			Color.FromArgb(160, 168, 180)
+		};
+		for (int i = 0; i < 4; i++)
+		{
+			Rectangle c = new Rectangle(r.X + i % 2 * (cell + gap), r.Y + i / 2 * (cell + gap), cell, cell);
+			GfxUtil.FillRounded(g, c, Math.Max(1, cell / 4), colors[i]);
+		}
+	}
+
+	// ---------------------------------------------------------------- pages
 
 	private void BuildPages()
 	{
 		pageHost = new Panel
 		{
 			Dock = DockStyle.Fill,
-			Padding = new Padding(24, 12, 24, 20)
+			Padding = new Padding(Ui.S(24), Ui.S(20), Ui.S(24), Ui.S(20))
 		};
 		BuildPackPage();
 		BuildUnpackPage();
@@ -229,16 +323,55 @@ public partial class MainForm : Form
 		}
 	}
 
+	private static TitledCard Card(string title)
+	{
+		return new TitledCard
+		{
+			Title = title
+		};
+	}
+
+	// Small muted caption above a control; names starting with "cap" are styled muted.
+	private static Label Caption(string text)
+	{
+		return new Label
+		{
+			Name = "cap" + text,
+			AutoSize = true,
+			Text = text,
+			Font = Ui.Small
+		};
+	}
+
+	// Places a caption and its control at (x, y) and returns the y below them.
+	private static int Stack(Label caption, Control control, int x, int y, int width)
+	{
+		caption.Location = new Point(x, y);
+		control.Location = new Point(x, y + Ui.S(20));
+		control.Width = width;
+		return control.Bottom + Ui.S(14);
+	}
+
+	private static object[] OutputFormats => new object[5] { "PNG", "TGA", "TIFF", "BMP", "JPEG" };
+
+	private const string ImageFilter = "Images|*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff;*.tga|All files|*.*";
+
+	// ---------------------------------------------------------------- Pack
+
+	private Label capPreset;
+
+	private Label capFormat;
+
 	private void BuildPackPage()
 	{
 		pagePack = new Panel
 		{
 			Dock = DockStyle.Fill
 		};
-		slotR = new ChannelSlot("Channel R", Color.FromArgb(226, 75, 74));
-		slotG = new ChannelSlot("Channel G", Color.FromArgb(120, 190, 70));
-		slotB = new ChannelSlot("Channel B", Color.FromArgb(55, 138, 221));
-		slotA = new ChannelSlot("Channel A", Color.FromArgb(150, 160, 170));
+		slotR = new ChannelSlot("Channel R", Color.FromArgb(232, 84, 80));
+		slotG = new ChannelSlot("Channel G", Color.FromArgb(108, 196, 92));
+		slotB = new ChannelSlot("Channel B", Color.FromArgb(66, 133, 255));
+		slotA = new ChannelSlot("Channel A", Color.FromArgb(160, 168, 180));
 		ChannelSlot[] array = new ChannelSlot[4] { slotR, slotG, slotB, slotA };
 		foreach (ChannelSlot channelSlot in array)
 		{
@@ -252,39 +385,24 @@ public partial class MainForm : Form
 		}
 		packResult = new PreviewBox
 		{
-			EmptyText = "packed result appears here"
+			EmptyText = "Packed result appears here",
+			EmptyHint = "Load channel images above, then press Pack now"
 		};
 		pagePack.Controls.Add(packResult);
-		Label label = new Label();
-		label.AutoSize = true;
-		label.Text = "Preset";
-		label.Font = new Font("Segoe UI", 9f);
-		Label label2 = label;
-		label2.Name = "presetLabel";
-		presetCombo = new ThemedComboBox
-		{
-			Width = 260
-		};
+		packCard = Card("Output");
+		capPreset = Caption("Preset");
+		presetCombo = new ThemedComboBox();
 		presetCombo.Items.AddRange(new object[4] { "Custom", "Unreal ORM (R=AO, G=Rough, B=Metal)", "Unity HDRP mask (R=Metal, G=AO, B=Detail, A=Smooth)", "glTF metallic-roughness (G=Rough, B=Metal)" });
 		presetCombo.SelectedIndex = 0;
-		label = new Label();
-		label.AutoSize = true;
-		label.Text = "Format";
-		label.Font = new Font("Segoe UI", 9f);
-		Label label3 = label;
-		label3.Name = "fmtLabel";
-		formatCombo = new ThemedComboBox
-		{
-			Width = 150
-		};
-		formatCombo.Items.AddRange(new object[5] { "PNG", "TGA", "TIFF", "BMP", "JPEG" });
+		capFormat = Caption("Format");
+		formatCombo = new ThemedComboBox();
+		formatCombo.Items.AddRange(OutputFormats);
 		formatCombo.SelectedIndex = 0;
 		packProgress = new ThemedProgress();
 		packBtn = new FlatButton
 		{
 			Text = "Pack now",
-			Role = FlatButton.ButtonRole.Secondary,
-			Width = 160
+			Role = FlatButton.ButtonRole.Secondary
 		};
 		packBtn.Click += async delegate
 		{
@@ -294,20 +412,20 @@ public partial class MainForm : Form
 		{
 			Text = "Save packed map",
 			Role = FlatButton.ButtonRole.Accent,
-			Width = 200,
 			Enabled = false
 		};
 		packSaveBtn.Click += delegate
 		{
 			SavePacked();
 		};
-		pagePack.Controls.Add(label2);
-		pagePack.Controls.Add(presetCombo);
-		pagePack.Controls.Add(label3);
-		pagePack.Controls.Add(formatCombo);
-		pagePack.Controls.Add(packProgress);
-		pagePack.Controls.Add(packBtn);
-		pagePack.Controls.Add(packSaveBtn);
+		packCard.Controls.Add(capPreset);
+		packCard.Controls.Add(presetCombo);
+		packCard.Controls.Add(capFormat);
+		packCard.Controls.Add(formatCombo);
+		packCard.Controls.Add(packProgress);
+		packCard.Controls.Add(packBtn);
+		packCard.Controls.Add(packSaveBtn);
+		pagePack.Controls.Add(packCard);
 		pagePack.Resize += delegate
 		{
 			LayoutPackPage();
@@ -317,46 +435,39 @@ public partial class MainForm : Form
 	private void LayoutPackPage()
 	{
 		int width = pagePack.Width;
-		int num = 14;
-		int num2 = (width - num * 3) / 4;
-		int num3 = 200;
-		int num4 = 0;
-		int num5 = 0;
+		int height = pagePack.Height;
+		int gap = Gap;
+		int slotW = (width - gap * 3) / 4;
+		int slotH = Math.Max(Ui.S(180), Math.Min(Ui.S(260), (int)(height * 0.42)));
 		ChannelSlot[] array = new ChannelSlot[4] { slotR, slotG, slotB, slotA };
 		for (int i = 0; i < 4; i++)
 		{
-			array[i].Location = new Point(num4, num5);
-			array[i].Size = new Size(num2, num3);
-			num4 += num2 + num;
+			array[i].Location = new Point(i * (slotW + gap), 0);
+			array[i].Size = new Size(slotW, slotH);
 		}
-		int num6 = num5 + num3 + num;
-		int num7 = 150;
-		packResult.Location = new Point(0, num6);
-		packResult.Size = new Size(width, pagePack.Height - num6 - num7);
-		int num8 = pagePack.Height - num7 + 8;
-		Control control = pagePack.Controls["presetLabel"];
-		Control control2 = pagePack.Controls["fmtLabel"];
-		if (control != null)
-		{
-			control.Location = new Point(2, num8);
-		}
-		presetCombo.Location = new Point(2, num8 + 20);
-		if (control2 != null)
-		{
-			control2.Location = new Point(2 + presetCombo.Width + 24, num8);
-		}
-		formatCombo.Location = new Point(2 + presetCombo.Width + 24, num8 + 20);
-		packProgress.Location = new Point(2, num8 + 62);
-		packProgress.Size = new Size(width - 4, 8);
-		packSaveBtn.Location = new Point(width - packSaveBtn.Width, num8 + 78);
-		packBtn.Location = new Point(width - packSaveBtn.Width - packBtn.Width - 12, num8 + 78);
+		int top = slotH + gap;
+		int side = SideWidth;
+		packCard.Location = new Point(width - side, top);
+		packCard.Size = new Size(side, height - top);
+		packResult.Location = new Point(0, top);
+		packResult.Size = new Size(width - side - gap, height - top);
+		int inner = side - Pad * 2;
+		int y = Stack(capPreset, presetCombo, Pad, packCard.ContentTop, inner);
+		Stack(capFormat, formatCombo, Pad, y, inner);
+		int by = packCard.Height - Pad - packSaveBtn.Height;
+		packSaveBtn.Location = new Point(Pad, by);
+		packSaveBtn.Width = inner;
+		packBtn.Location = new Point(Pad, by - Ui.S(8) - packBtn.Height);
+		packBtn.Width = inner;
+		packProgress.Location = new Point(Pad, packBtn.Top - Ui.S(18));
+		packProgress.Width = inner;
 	}
 
 	private async Task DoPack()
 	{
 		if (slotR.SourceImage == null && slotG.SourceImage == null && slotB.SourceImage == null && slotA.SourceImage == null)
 		{
-			MessageBox.Show("Load at least one channel image first.", "Nothing to pack", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
+			Notifier.Warning("Load at least one channel image first.");
 			return;
 		}
 		packBtn.Enabled = false;
@@ -370,10 +481,14 @@ public partial class MainForm : Form
 			packedImage = result;
 			packResult.Image = result;
 			packSaveBtn.Enabled = result != null;
+			if (result != null)
+			{
+				Notifier.Success("Packed a " + result.Width + "×" + result.Height + " map.");
+			}
 		}
 		catch (Exception ex)
 		{
-			MessageBox.Show("Packing failed:" + Environment.NewLine + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Hand);
+			Notifier.Error("Packing failed: " + ex.Message);
 		}
 		finally
 		{
@@ -389,30 +504,24 @@ public partial class MainForm : Form
 			return;
 		}
 		ImageCore.OutputFormat outputFormat = SelectedFormat(formatCombo);
-		SaveFileDialog saveFileDialog = new SaveFileDialog();
-		try
+		using SaveFileDialog saveFileDialog = new SaveFileDialog();
+		saveFileDialog.Filter = FilterFor(outputFormat);
+		saveFileDialog.FileName = "packed" + ImageCore.ExtensionFor(outputFormat);
+		if (saveFileDialog.ShowDialog() == DialogResult.OK)
 		{
-			saveFileDialog.Filter = FilterFor(outputFormat);
-			saveFileDialog.FileName = "packed" + ImageCore.ExtensionFor(outputFormat);
-			if (saveFileDialog.ShowDialog() == DialogResult.OK)
+			try
 			{
-				try
-				{
-					ImageCore.Save(packedImage, saveFileDialog.FileName, ImageCore.FormatFromExtension(saveFileDialog.FileName, outputFormat));
-					return;
-				}
-				catch (Exception ex)
-				{
-					MessageBox.Show("Save failed:" + Environment.NewLine + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Hand);
-					return;
-				}
+				ImageCore.Save(packedImage, saveFileDialog.FileName, ImageCore.FormatFromExtension(saveFileDialog.FileName, outputFormat));
+				Notifier.Success("Saved " + Path.GetFileName(saveFileDialog.FileName));
+			}
+			catch (Exception ex)
+			{
+				Notifier.Error("Save failed: " + ex.Message);
 			}
 		}
-		finally
-		{
-			((IDisposable)(object)saveFileDialog)?.Dispose();
-		}
 	}
+
+	// ---------------------------------------------------------------- Unpack
 
 	private void BuildUnpackPage()
 	{
@@ -420,15 +529,18 @@ public partial class MainForm : Form
 		{
 			Dock = DockStyle.Fill
 		};
+		unpackCard = Card("Source texture");
 		unpackSource = new PreviewBox
 		{
-			EmptyText = "load a packed texture to split"
+			EmptyText = "Drop a packed texture",
+			EmptyHint = "or use Load texture",
+			AcceptsFiles = true
 		};
+		unpackSource.FileDropped += LoadUnpackFile;
 		unpackLoadBtn = new FlatButton
 		{
 			Text = "Load texture",
-			Role = FlatButton.ButtonRole.Accent,
-			Width = 160
+			Role = FlatButton.ButtonRole.Secondary
 		};
 		unpackLoadBtn.Click += delegate
 		{
@@ -436,47 +548,33 @@ public partial class MainForm : Form
 		};
 		sameFolderChk = new ThemedCheckBox
 		{
-			Text = "Save channels in the source folder (no dialog)",
-			Width = 380
+			Text = "Save next to the source (no dialog)"
 		};
 		unpackSaveAllBtn = new FlatButton
 		{
 			Text = "Save all channels",
-			Role = FlatButton.ButtonRole.Accent,
-			Width = 190
+			Role = FlatButton.ButtonRole.Accent
 		};
 		unpackSaveAllBtn.Click += delegate
 		{
 			SaveAllChannels();
 		};
-		viewR = new ChannelView("Channel R", Color.FromArgb(226, 75, 74), "_R");
-		viewG = new ChannelView("Channel G", Color.FromArgb(120, 190, 70), "_G");
-		viewB = new ChannelView("Channel B", Color.FromArgb(55, 138, 221), "_B");
-		viewA = new ChannelView("Channel A", Color.FromArgb(150, 160, 170), "_A");
 		unpackProgress = new ThemedProgress();
-		pageUnpack.Controls.Add(unpackSource);
-		pageUnpack.Controls.Add(unpackLoadBtn);
-		pageUnpack.Controls.Add(sameFolderChk);
-		pageUnpack.Controls.Add(unpackSaveAllBtn);
-		pageUnpack.Controls.Add(unpackProgress);
+		unpackCard.Controls.Add(unpackSource);
+		unpackCard.Controls.Add(unpackLoadBtn);
+		unpackCard.Controls.Add(unpackProgress);
+		unpackCard.Controls.Add(sameFolderChk);
+		unpackCard.Controls.Add(unpackSaveAllBtn);
+		pageUnpack.Controls.Add(unpackCard);
+		viewR = new ChannelView("Channel R", Color.FromArgb(232, 84, 80), "_R");
+		viewG = new ChannelView("Channel G", Color.FromArgb(108, 196, 92), "_G");
+		viewB = new ChannelView("Channel B", Color.FromArgb(66, 133, 255), "_B");
+		viewA = new ChannelView("Channel A", Color.FromArgb(160, 168, 180), "_A");
 		ChannelView[] array = new ChannelView[4] { viewR, viewG, viewB, viewA };
 		foreach (ChannelView value in array)
 		{
 			pageUnpack.Controls.Add(value);
 		}
-		pageUnpack.AllowDrop = true;
-		pageUnpack.DragEnter += delegate(object s, DragEventArgs e)
-		{
-			e.Effect = (e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None);
-		};
-		pageUnpack.DragDrop += delegate(object s, DragEventArgs e)
-		{
-			string[] array2 = (string[])e.Data.GetData(DataFormats.FileDrop);
-			if (array2 != null && array2.Length > 0)
-			{
-				LoadUnpackFile(array2[0]);
-			}
-		};
 		pageUnpack.Resize += delegate
 		{
 			LayoutUnpackPage();
@@ -487,46 +585,40 @@ public partial class MainForm : Form
 	{
 		int width = pageUnpack.Width;
 		int height = pageUnpack.Height;
-		int num = 210;
-		int num2 = 260;
-		unpackSource.Location = new Point(0, 0);
-		unpackSource.Size = new Size(num2, num);
-		unpackLoadBtn.Location = new Point(num2 + 20, 8);
-		unpackProgress.Location = new Point(num2 + 20, 8 + unpackLoadBtn.Height + 14);
-		unpackProgress.Size = new Size(Math.Max(160, width - num2 - 20), 8);
-		int num3 = 52;
-		int num4 = height - num3;
-		sameFolderChk.Location = new Point(2, num4 + (num3 - sameFolderChk.Height) / 2);
-		unpackSaveAllBtn.Location = new Point(width - unpackSaveAllBtn.Width, num4 + (num3 - unpackSaveAllBtn.Height) / 2);
-		int num5 = 14;
-		int num6 = (width - num5 * 3) / 4;
-		int num7 = num + 20;
-		int val = num4 - num7 - 12;
-		int height2 = Math.Min(val, 300);
+		int side = SideWidth;
+		int inner = side - Pad * 2;
+		unpackCard.Location = new Point(0, 0);
+		unpackCard.Size = new Size(side, height);
+		int by = unpackCard.Height - Pad - unpackSaveAllBtn.Height;
+		unpackSaveAllBtn.Location = new Point(Pad, by);
+		unpackSaveAllBtn.Width = inner;
+		sameFolderChk.Location = new Point(Pad, by - Ui.S(10) - sameFolderChk.Height);
+		sameFolderChk.Width = inner;
+		unpackLoadBtn.Location = new Point(Pad, sameFolderChk.Top - Ui.S(18) - unpackLoadBtn.Height);
+		unpackLoadBtn.Width = inner;
+		unpackProgress.Location = new Point(Pad, unpackLoadBtn.Top - Ui.S(16));
+		unpackProgress.Width = inner;
+		int top = unpackCard.ContentTop;
+		unpackSource.Location = new Point(Pad, top);
+		unpackSource.Size = new Size(inner, Math.Max(Ui.S(80), unpackProgress.Top - Ui.S(12) - top));
+		int gx = side + Gap;
+		int gw = (width - gx - Gap) / 2;
+		int gh = (height - Gap) / 2;
 		ChannelView[] array = new ChannelView[4] { viewR, viewG, viewB, viewA };
-		int num8 = 0;
 		for (int i = 0; i < 4; i++)
 		{
-			array[i].Location = new Point(num8, num7);
-			array[i].Size = new Size(num6, height2);
-			num8 += num6 + num5;
+			array[i].Location = new Point(gx + i % 2 * (gw + Gap), i / 2 * (gh + Gap));
+			array[i].Size = new Size(gw, gh);
 		}
 	}
 
 	private void LoadUnpack()
 	{
-		OpenFileDialog openFileDialog = new OpenFileDialog();
-		try
+		using OpenFileDialog openFileDialog = new OpenFileDialog();
+		openFileDialog.Filter = ImageFilter;
+		if (openFileDialog.ShowDialog() == DialogResult.OK)
 		{
-			openFileDialog.Filter = "Images|*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff;*.tga|All files|*.*";
-			if (openFileDialog.ShowDialog() == DialogResult.OK)
-			{
-				LoadUnpackFile(openFileDialog.FileName);
-			}
-		}
-		finally
-		{
-			((IDisposable)(object)openFileDialog)?.Dispose();
+			LoadUnpackFile(openFileDialog.FileName);
 		}
 	}
 
@@ -537,6 +629,7 @@ public partial class MainForm : Form
 			Bitmap src = ImageCore.Load(path);
 			unpackPath = path;
 			unpackSource.Image = src;
+			unpackSource.InfoText = src.Width + "×" + src.Height;
 			Progress<int> progress = new Progress<int>(delegate(int v)
 			{
 				unpackProgress.Value = v;
@@ -550,10 +643,11 @@ public partial class MainForm : Form
 			viewG.SetImage(outs[1], path);
 			viewB.SetImage(outs[2], path);
 			viewA.SetImage(outs[3], path);
+			Notifier.Info("Split " + Path.GetFileName(path) + " into 4 channels.");
 		}
 		catch (Exception ex)
 		{
-			MessageBox.Show("Couldn't load/split:" + Environment.NewLine + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Hand);
+			Notifier.Error("Couldn't load or split: " + ex.Message);
 		}
 		finally
 		{
@@ -563,13 +657,30 @@ public partial class MainForm : Form
 
 	private void SaveAllChannels()
 	{
+		if (!viewR.HasImage)
+		{
+			Notifier.Warning("Load a texture to split first.");
+			return;
+		}
 		bool autoSameFolder = sameFolderChk.Checked;
 		ChannelView[] array = new ChannelView[4] { viewR, viewG, viewB, viewA };
 		foreach (ChannelView channelView in array)
 		{
 			channelView.Save(autoSameFolder);
 		}
+		if (autoSameFolder && unpackPath != null)
+		{
+			Notifier.Success("Saved 4 channels next to " + Path.GetFileName(unpackPath));
+		}
 	}
+
+	// ---------------------------------------------------------------- Utility
+
+	private Label capOperation;
+
+	private Label capUtilFormat;
+
+	private Label utilHint;
 
 	private void BuildUtilityPage()
 	{
@@ -579,37 +690,26 @@ public partial class MainForm : Form
 		};
 		utilPreview = new PreviewBox
 		{
-			EmptyText = "load a texture to process"
+			EmptyText = "Drop a texture to process",
+			EmptyHint = "After Apply, drag the divider to compare",
+			AcceptsFiles = true,
+			CompareLabel = "Original",
+			ImageLabel = "Result"
 		};
-		Label label = new Label();
-		label.AutoSize = true;
-		label.Text = "Operation";
-		label.Font = new Font("Segoe UI", 9f);
-		label.Name = "opLabel";
-		Label value = label;
-		utilOpCombo = new ThemedComboBox
-		{
-			Width = 320
-		};
+		utilPreview.FileDropped += LoadUtilFile;
+		utilCard = Card("Operation");
+		capOperation = Caption("Operation");
+		utilOpCombo = new ThemedComboBox();
 		utilOpCombo.Items.AddRange(new object[4] { "Flip Y (normal map: OpenGL <-> DirectX)", "Flip vertical (whole image)", "Flip horizontal (whole image)", "Invert RGB" });
 		utilOpCombo.SelectedIndex = 0;
-		label = new Label();
-		label.AutoSize = true;
-		label.Text = "Format";
-		label.Font = new Font("Segoe UI", 9f);
-		label.Name = "ufLabel";
-		Label value2 = label;
-		utilFormatCombo = new ThemedComboBox
-		{
-			Width = 150
-		};
-		utilFormatCombo.Items.AddRange(new object[5] { "PNG", "TGA", "TIFF", "BMP", "JPEG" });
+		capUtilFormat = Caption("Format");
+		utilFormatCombo = new ThemedComboBox();
+		utilFormatCombo.Items.AddRange(OutputFormats);
 		utilFormatCombo.SelectedIndex = 0;
 		utilLoadBtn = new FlatButton
 		{
 			Text = "Load texture",
-			Role = FlatButton.ButtonRole.Secondary,
-			Width = 160
+			Role = FlatButton.ButtonRole.Secondary
 		};
 		utilLoadBtn.Click += delegate
 		{
@@ -619,7 +719,6 @@ public partial class MainForm : Form
 		{
 			Text = "Apply",
 			Role = FlatButton.ButtonRole.Secondary,
-			Width = 130,
 			Enabled = false
 		};
 		utilApplyBtn.Click += delegate
@@ -630,34 +729,29 @@ public partial class MainForm : Form
 		{
 			Text = "Save result",
 			Role = FlatButton.ButtonRole.Accent,
-			Width = 180,
 			Enabled = false
 		};
 		utilSaveBtn.Click += delegate
 		{
 			SaveUtil();
 		};
+		utilHint = new Label
+		{
+			Name = "capHint",
+			AutoSize = false,
+			Text = "Operations stack: Apply runs on the current result. Load the file again to start over.",
+			Font = Ui.Small
+		};
+		utilCard.Controls.Add(capOperation);
+		utilCard.Controls.Add(utilOpCombo);
+		utilCard.Controls.Add(capUtilFormat);
+		utilCard.Controls.Add(utilFormatCombo);
+		utilCard.Controls.Add(utilHint);
+		utilCard.Controls.Add(utilLoadBtn);
+		utilCard.Controls.Add(utilApplyBtn);
+		utilCard.Controls.Add(utilSaveBtn);
+		pageUtility.Controls.Add(utilCard);
 		pageUtility.Controls.Add(utilPreview);
-		pageUtility.Controls.Add(value);
-		pageUtility.Controls.Add(utilOpCombo);
-		pageUtility.Controls.Add(value2);
-		pageUtility.Controls.Add(utilFormatCombo);
-		pageUtility.Controls.Add(utilLoadBtn);
-		pageUtility.Controls.Add(utilApplyBtn);
-		pageUtility.Controls.Add(utilSaveBtn);
-		pageUtility.AllowDrop = true;
-		pageUtility.DragEnter += delegate(object s, DragEventArgs e)
-		{
-			e.Effect = (e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None);
-		};
-		pageUtility.DragDrop += delegate(object s, DragEventArgs e)
-		{
-			string[] array = (string[])e.Data.GetData(DataFormats.FileDrop);
-			if (array != null && array.Length > 0)
-			{
-				LoadUtilFile(array[0]);
-			}
-		};
 		pageUtility.Resize += delegate
 		{
 			LayoutUtilityPage();
@@ -667,41 +761,34 @@ public partial class MainForm : Form
 	private void LayoutUtilityPage()
 	{
 		int width = pageUtility.Width;
-		int num = 150;
-		utilPreview.Location = new Point(0, 0);
-		utilPreview.Size = new Size(width, pageUtility.Height - num);
-		int num2 = pageUtility.Height - num + 12;
-		Control control = pageUtility.Controls["opLabel"];
-		Control control2 = pageUtility.Controls["ufLabel"];
-		if (control != null)
-		{
-			control.Location = new Point(2, num2);
-		}
-		utilOpCombo.Location = new Point(2, num2 + 20);
-		if (control2 != null)
-		{
-			control2.Location = new Point(2 + utilOpCombo.Width + 24, num2);
-		}
-		utilFormatCombo.Location = new Point(2 + utilOpCombo.Width + 24, num2 + 20);
-		utilSaveBtn.Location = new Point(width - utilSaveBtn.Width, num2 + 60);
-		utilApplyBtn.Location = new Point(width - utilSaveBtn.Width - utilApplyBtn.Width - 12, num2 + 60);
-		utilLoadBtn.Location = new Point(width - utilSaveBtn.Width - utilApplyBtn.Width - utilLoadBtn.Width - 24, num2 + 60);
+		int height = pageUtility.Height;
+		int side = SideWidth;
+		int inner = side - Pad * 2;
+		utilCard.Location = new Point(0, 0);
+		utilCard.Size = new Size(side, height);
+		int y = Stack(capOperation, utilOpCombo, Pad, utilCard.ContentTop, inner);
+		y = Stack(capUtilFormat, utilFormatCombo, Pad, y, inner);
+		utilHint.Location = new Point(Pad, y);
+		utilHint.Size = new Size(inner, Ui.S(40));
+		int by = utilCard.Height - Pad - utilSaveBtn.Height;
+		utilSaveBtn.Location = new Point(Pad, by);
+		utilSaveBtn.Width = inner;
+		int half = (inner - Ui.S(8)) / 2;
+		utilLoadBtn.Location = new Point(Pad, by - Ui.S(8) - utilLoadBtn.Height);
+		utilLoadBtn.Width = half;
+		utilApplyBtn.Location = new Point(Pad + half + Ui.S(8), utilLoadBtn.Top);
+		utilApplyBtn.Width = inner - half - Ui.S(8);
+		utilPreview.Location = new Point(side + Gap, 0);
+		utilPreview.Size = new Size(width - side - Gap, height);
 	}
 
 	private void LoadUtil()
 	{
-		OpenFileDialog openFileDialog = new OpenFileDialog();
-		try
+		using OpenFileDialog openFileDialog = new OpenFileDialog();
+		openFileDialog.Filter = ImageFilter;
+		if (openFileDialog.ShowDialog() == DialogResult.OK)
 		{
-			openFileDialog.Filter = "Images|*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff;*.tga|All files|*.*";
-			if (openFileDialog.ShowDialog() == DialogResult.OK)
-			{
-				LoadUtilFile(openFileDialog.FileName);
-			}
-		}
-		finally
-		{
-			((IDisposable)(object)openFileDialog)?.Dispose();
+			LoadUtilFile(openFileDialog.FileName);
 		}
 	}
 
@@ -709,19 +796,21 @@ public partial class MainForm : Form
 	{
 		try
 		{
-			if (utilImage != null)
-			{
-				utilImage.Dispose();
-			}
-			utilImage = ImageCore.Load(path);
+			Bitmap loaded = ImageCore.Load(path);
+			utilPreview.CompareImage = null;
+			utilImage?.Dispose();
+			utilOriginal?.Dispose();
+			utilImage = loaded;
+			utilOriginal = ImageCore.CloneArgb32(loaded);
 			utilPath = path;
 			utilPreview.Image = utilImage;
+			utilPreview.InfoText = loaded.Width + "×" + loaded.Height;
 			utilApplyBtn.Enabled = true;
 			utilSaveBtn.Enabled = true;
 		}
 		catch (Exception ex)
 		{
-			MessageBox.Show("Couldn't load:" + Environment.NewLine + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Hand);
+			Notifier.Error("Couldn't load: " + ex.Message);
 		}
 	}
 
@@ -731,14 +820,17 @@ public partial class MainForm : Form
 		{
 			Bitmap bitmap = utilOpCombo.SelectedIndex switch
 			{
-				1 => ImageCore.FlipVertical(utilImage), 
-				2 => ImageCore.FlipHorizontal(utilImage), 
-				3 => ImageCore.InvertRgb(utilImage), 
-				_ => ImageCore.FlipGreen(utilImage), 
+				1 => ImageCore.FlipVertical(utilImage),
+				2 => ImageCore.FlipHorizontal(utilImage),
+				3 => ImageCore.InvertRgb(utilImage),
+				_ => ImageCore.FlipGreen(utilImage),
 			};
-			utilImage.Dispose();
+			Bitmap old = utilImage;
 			utilImage = bitmap;
 			utilPreview.Image = utilImage;
+			utilPreview.CompareImage = utilOriginal;
+			old.Dispose();
+			Notifier.Info("Applied: " + utilOpCombo.Text);
 		}
 	}
 
@@ -749,35 +841,29 @@ public partial class MainForm : Form
 			return;
 		}
 		ImageCore.OutputFormat outputFormat = SelectedFormat(utilFormatCombo);
-		SaveFileDialog saveFileDialog = new SaveFileDialog();
-		try
+		using SaveFileDialog saveFileDialog = new SaveFileDialog();
+		saveFileDialog.Filter = FilterFor(outputFormat);
+		string text = ((utilPath == null) ? "texture" : Path.GetFileNameWithoutExtension(utilPath));
+		saveFileDialog.FileName = text + "_util" + ImageCore.ExtensionFor(outputFormat);
+		if (utilPath != null)
 		{
-			saveFileDialog.Filter = FilterFor(outputFormat);
-			string text = ((utilPath == null) ? "texture" : Path.GetFileNameWithoutExtension(utilPath));
-			saveFileDialog.FileName = text + "_util" + ImageCore.ExtensionFor(outputFormat);
-			if (utilPath != null)
-			{
-				saveFileDialog.InitialDirectory = Path.GetDirectoryName(utilPath);
-			}
-			if (saveFileDialog.ShowDialog() == DialogResult.OK)
-			{
-				try
-				{
-					ImageCore.Save(utilImage, saveFileDialog.FileName, ImageCore.FormatFromExtension(saveFileDialog.FileName, outputFormat));
-					return;
-				}
-				catch (Exception ex)
-				{
-					MessageBox.Show("Save failed:" + Environment.NewLine + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Hand);
-					return;
-				}
-			}
+			saveFileDialog.InitialDirectory = Path.GetDirectoryName(utilPath);
 		}
-		finally
+		if (saveFileDialog.ShowDialog() == DialogResult.OK)
 		{
-			((IDisposable)(object)saveFileDialog)?.Dispose();
+			try
+			{
+				ImageCore.Save(utilImage, saveFileDialog.FileName, ImageCore.FormatFromExtension(saveFileDialog.FileName, outputFormat));
+				Notifier.Success("Saved " + Path.GetFileName(saveFileDialog.FileName));
+			}
+			catch (Exception ex)
+			{
+				Notifier.Error("Save failed: " + ex.Message);
+			}
 		}
 	}
+
+	// ---------------------------------------------------------------- Renamer
 
 	private void BuildRenamerPage()
 	{
@@ -785,13 +871,14 @@ public partial class MainForm : Form
 		{
 			Dock = DockStyle.Fill
 		};
+		renameRulesCard = Card("Rename rules");
+		renamePreviewCard = Card("Preview");
 		dirField = new LabeledField("Folder");
 		dirField.Box.ReadOnly = true;
 		browseBtn = new FlatButton
 		{
 			Text = "Browse",
-			Role = FlatButton.ButtonRole.Secondary,
-			Width = 120
+			Role = FlatButton.ButtonRole.Secondary
 		};
 		browseBtn.Click += delegate
 		{
@@ -805,13 +892,11 @@ public partial class MainForm : Form
 		digitsField.Value = "0";
 		recurseChk = new ThemedCheckBox
 		{
-			Text = "Include subfolders",
-			Width = 220
+			Text = "Include subfolders"
 		};
 		keepExtChk = new ThemedCheckBox
 		{
 			Text = "Keep file extension",
-			Width = 220,
 			Checked = true
 		};
 		LabeledField[] array = new LabeledField[5] { searchField, replaceField, prefixField, suffixField, digitsField };
@@ -833,32 +918,34 @@ public partial class MainForm : Form
 		renamePreview = new RenamePreviewList();
 		renameStatus = new Label
 		{
-			AutoSize = true,
+			AutoSize = false,
 			Text = "",
-			Font = new Font("Segoe UI", 9f)
+			Font = Ui.Small,
+			AutoEllipsis = true,
+			TextAlign = ContentAlignment.MiddleLeft
 		};
 		renameBtn = new FlatButton
 		{
 			Text = "Rename files",
-			Role = FlatButton.ButtonRole.Accent,
-			Width = 190
+			Role = FlatButton.ButtonRole.Accent
 		};
 		renameBtn.Click += delegate
 		{
 			DoRename();
 		};
-		pageRenamer.Controls.Add(dirField);
-		pageRenamer.Controls.Add(browseBtn);
-		pageRenamer.Controls.Add(searchField);
-		pageRenamer.Controls.Add(replaceField);
-		pageRenamer.Controls.Add(prefixField);
-		pageRenamer.Controls.Add(suffixField);
-		pageRenamer.Controls.Add(digitsField);
-		pageRenamer.Controls.Add(recurseChk);
-		pageRenamer.Controls.Add(keepExtChk);
-		pageRenamer.Controls.Add(renamePreview);
-		pageRenamer.Controls.Add(renameStatus);
-		pageRenamer.Controls.Add(renameBtn);
+		renameRulesCard.Controls.Add(dirField);
+		renameRulesCard.Controls.Add(browseBtn);
+		foreach (LabeledField field in array)
+		{
+			renameRulesCard.Controls.Add(field);
+		}
+		renameRulesCard.Controls.Add(recurseChk);
+		renameRulesCard.Controls.Add(keepExtChk);
+		renamePreviewCard.Controls.Add(renamePreview);
+		renamePreviewCard.Controls.Add(renameStatus);
+		renamePreviewCard.Controls.Add(renameBtn);
+		pageRenamer.Controls.Add(renameRulesCard);
+		pageRenamer.Controls.Add(renamePreviewCard);
 		pageRenamer.Resize += delegate
 		{
 			LayoutRenamerPage();
@@ -868,44 +955,49 @@ public partial class MainForm : Form
 	private void LayoutRenamerPage()
 	{
 		int width = pageRenamer.Width;
-		int num = 340;
-		int num2 = 24;
-		int num3 = 0;
-		int num4 = 0;
-		dirField.Location = new Point(0, num4);
-		dirField.Size = new Size(num - 130, 52);
-		browseBtn.Location = new Point(num - 120, num4 + 20);
-		num4 += 62;
+		int height = pageRenamer.Height;
+		int side = Ui.S(360);
+		int inner = side - Pad * 2;
+		renameRulesCard.Location = new Point(0, 0);
+		renameRulesCard.Size = new Size(side, height);
+		int y = renameRulesCard.ContentTop;
+		int browseW = Ui.S(96);
+		dirField.Location = new Point(Pad, y);
+		dirField.Width = inner - browseW - Ui.S(8);
+		browseBtn.Size = new Size(browseW, Ui.S(34));
+		browseBtn.Location = new Point(Pad + inner - browseW, y + Ui.S(20));
+		y += dirField.Height + Ui.S(4);
 		LabeledField[] array = new LabeledField[5] { searchField, replaceField, prefixField, suffixField, digitsField };
 		foreach (LabeledField labeledField in array)
 		{
-			labeledField.Location = new Point(0, num4);
-			labeledField.Size = new Size(num, 52);
-			num4 += 60;
+			labeledField.Location = new Point(Pad, y);
+			labeledField.Width = inner;
+			y += labeledField.Height + Ui.S(4);
 		}
-		recurseChk.Location = new Point(2, num4 + 4);
-		keepExtChk.Location = new Point(2, num4 + 34);
-		renameBtn.Location = new Point(2, pageRenamer.Height - renameBtn.Height);
-		renameStatus.Location = new Point(2, pageRenamer.Height - renameBtn.Height - 26);
-		int num5 = num + num2;
-		renamePreview.Location = new Point(num5, 0);
-		renamePreview.Size = new Size(width - num5, pageRenamer.Height - 6);
+		recurseChk.Location = new Point(Pad, y + Ui.S(4));
+		recurseChk.Width = inner;
+		keepExtChk.Location = new Point(Pad, recurseChk.Bottom + Ui.S(4));
+		keepExtChk.Width = inner;
+		int px = side + Gap;
+		renamePreviewCard.Location = new Point(px, 0);
+		renamePreviewCard.Size = new Size(width - px, height);
+		int pin = renamePreviewCard.Width - Pad * 2;
+		int by = height - Pad - renameBtn.Height;
+		renameBtn.Width = Ui.S(180);
+		renameBtn.Location = new Point(renamePreviewCard.Width - Pad - renameBtn.Width, by);
+		renameStatus.Location = new Point(Pad, by);
+		renameStatus.Size = new Size(pin - renameBtn.Width - Ui.S(12), renameBtn.Height);
+		renamePreview.Location = new Point(Pad, renamePreviewCard.ContentTop);
+		renamePreview.Size = new Size(pin, by - Ui.S(12) - renamePreviewCard.ContentTop);
 	}
 
 	private void BrowseFolder()
 	{
-		FolderBrowserDialog folderBrowserDialog = new FolderBrowserDialog();
-		try
+		using FolderBrowserDialog folderBrowserDialog = new FolderBrowserDialog();
+		if (folderBrowserDialog.ShowDialog() == DialogResult.OK)
 		{
-			if (folderBrowserDialog.ShowDialog() == DialogResult.OK)
-			{
-				dirField.Value = folderBrowserDialog.SelectedPath;
-				RefreshRenamePreview();
-			}
-		}
-		finally
-		{
-			((IDisposable)(object)folderBrowserDialog)?.Dispose();
+			dirField.Value = folderBrowserDialog.SelectedPath;
+			RefreshRenamePreview();
 		}
 	}
 
@@ -962,43 +1054,47 @@ public partial class MainForm : Form
 		}
 		renamePreview.SetRows(list);
 		renameStatus.Text = currentPlan.Count + " files • " + num + " will change" + ((num2 <= 0) ? "" : (" • " + num2 + " warning" + ((num2 != 1) ? "s" : "")));
-		renameStatus.ForeColor = ((num2 <= 0) ? Theme.Current.TextMuted : Color.FromArgb(226, 96, 90));
+		renameStatus.ForeColor = ((num2 <= 0) ? Theme.Current.TextMuted : Theme.Current.Danger);
 	}
 
 	private void DoRename()
 	{
 		if (currentPlan == null || currentPlan.Count == 0)
 		{
-			MessageBox.Show("Pick a folder first.", "Nothing to rename", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
+			Notifier.Warning("Pick a folder first.");
 			return;
 		}
 		int count = currentPlan.FindAll((RenameEngine.Item i) => i.Changed).Count;
 		if (count == 0)
 		{
-			MessageBox.Show("These settings don't change any file names.", "Nothing to do", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
+			Notifier.Info("These settings don't change any file names.");
 			return;
 		}
 		int count2 = currentPlan.FindAll((RenameEngine.Item i) => !string.IsNullOrEmpty(i.Warning)).Count;
 		string text = "Rename " + count + " file(s)?";
 		if (count2 > 0)
 		{
-			string text2 = text;
-			text = text2 + "\n\n" + count2 + " have warnings (name collisions) and will be skipped.";
+			text = text + "\n\n" + count2 + " have warnings (name collisions) and will be skipped.";
 		}
 		if (MessageBox.Show(text, "Confirm rename", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) == DialogResult.OK)
 		{
 			List<string> errors;
 			int num = RenameEngine.Apply(currentPlan, force: false, out errors);
 			RefreshRenamePreview();
-			string text3 = num + " file(s) renamed.";
 			if (errors.Count > 0)
 			{
-				string text2 = text3;
-				text3 = text2 + "\n\n" + errors.Count + " error(s):\n" + string.Join("\n", errors.ToArray());
+				Notifier.Warning(num + " file(s) renamed, " + errors.Count + " failed: " + string.Join("; ", errors.ToArray()));
 			}
-			MessageBox.Show(text3, "Done", MessageBoxButtons.OK, (errors.Count <= 0) ? MessageBoxIcon.Asterisk : MessageBoxIcon.Exclamation);
+			else
+			{
+				Notifier.Success(num + " file(s) renamed.");
+			}
 		}
 	}
+
+	// ---------------------------------------------------------------- Injector
+
+	private Label capShader;
 
 	private void BuildInjectorPage()
 	{
@@ -1006,6 +1102,8 @@ public partial class MainForm : Form
 		{
 			Dock = DockStyle.Fill
 		};
+		injectorMapsCard = Card("Texture maps");
+		injectorMaterialCard = Card("Material");
 		slotRows = new Dictionary<MapType, MapSlotRow>();
 		MapType[] array = (MapType[])Enum.GetValues(typeof(MapType));
 		foreach (MapType mapType in array)
@@ -1016,42 +1114,29 @@ public partial class MainForm : Form
 				OnInjectorChanged();
 			};
 			slotRows[mapType] = mapSlotRow;
-			pageInjector.Controls.Add(mapSlotRow);
+			injectorMapsCard.Controls.Add(mapSlotRow);
 		}
 		showOptionalChk = new ThemedCheckBox
 		{
 			Text = "Show optional maps (AO, Opacity, Emission)",
-			Width = 360,
 			Checked = false
 		};
 		showOptionalChk.CheckedChanged += delegate
 		{
 			LayoutInjectorPage();
 		};
-		pageInjector.Controls.Add(showOptionalChk);
-		Label label = new Label();
-		label.Name = "shaderLabel";
-		label.AutoSize = true;
-		label.Text = "Shader type";
-		label.Font = new Font("Segoe UI", 9f);
-		Label value = label;
-		shaderCombo = new ThemedComboBox
-		{
-			Width = 260
-		};
+		injectorMapsCard.Controls.Add(showOptionalChk);
+		capShader = Caption("Shader type");
+		shaderCombo = new ThemedComboBox();
 		shaderCombo.Items.AddRange(new object[2] { "OpenPBR", "USD" });
 		shaderCombo.SelectedIndex = 0;
-		pageInjector.Controls.Add(value);
-		pageInjector.Controls.Add(shaderCombo);
 		materialNameField = new LabeledField("Material name (derived)");
 		materialNameField.Box.ReadOnly = true;
 		materialNameField.Value = "M_material";
-		pageInjector.Controls.Add(materialNameField);
 		injectorClearBtn = new FlatButton
 		{
 			Text = "Clear",
-			Role = FlatButton.ButtonRole.Secondary,
-			Width = 130
+			Role = FlatButton.ButtonRole.Secondary
 		};
 		injectorClearBtn.Click += delegate
 		{
@@ -1060,8 +1145,7 @@ public partial class MainForm : Form
 		injectBtn = new FlatButton
 		{
 			Text = "Export preset",
-			Role = FlatButton.ButtonRole.Accent,
-			Width = 190
+			Role = FlatButton.ButtonRole.Accent
 		};
 		injectBtn.Click += delegate
 		{
@@ -1070,13 +1154,17 @@ public partial class MainForm : Form
 		injectorStatus = new Label
 		{
 			AutoSize = false,
-			Text = "",
-			Font = new Font("Segoe UI", 9f),
-			AutoEllipsis = true
+			Text = "Writes %TEMP%/maya_bridge/material_preset.json for the Maya importer.",
+			Font = Ui.Small
 		};
-		pageInjector.Controls.Add(injectorClearBtn);
-		pageInjector.Controls.Add(injectBtn);
-		pageInjector.Controls.Add(injectorStatus);
+		injectorMaterialCard.Controls.Add(capShader);
+		injectorMaterialCard.Controls.Add(shaderCombo);
+		injectorMaterialCard.Controls.Add(materialNameField);
+		injectorMaterialCard.Controls.Add(injectorStatus);
+		injectorMaterialCard.Controls.Add(injectorClearBtn);
+		injectorMaterialCard.Controls.Add(injectBtn);
+		pageInjector.Controls.Add(injectorMapsCard);
+		pageInjector.Controls.Add(injectorMaterialCard);
 		pageInjector.Resize += delegate
 		{
 			LayoutInjectorPage();
@@ -1090,34 +1178,41 @@ public partial class MainForm : Form
 			return;
 		}
 		int width = pageInjector.Width;
-		int num = Math.Min(width, 620);
-		int num2 = 4;
+		int height = pageInjector.Height;
+		int side = SideWidth;
+		int mapsW = Math.Min(width - side - Gap, Ui.S(720));
+		injectorMapsCard.Location = new Point(0, 0);
+		injectorMapsCard.Size = new Size(mapsW, height);
+		int inner = mapsW - Pad * 2;
+		int y = injectorMapsCard.ContentTop;
 		MapType[] array = (MapType[])Enum.GetValues(typeof(MapType));
 		foreach (MapType mapType in array)
 		{
 			MapSlotRow mapSlotRow = slotRows[mapType];
 			if (mapSlotRow.Visible = MaterialPreset.IsCore(mapType) || showOptionalChk.Checked)
 			{
-				mapSlotRow.Location = new Point(0, num2);
-				mapSlotRow.Size = new Size(num, 46);
-				num2 += 50;
+				mapSlotRow.Location = new Point(Pad, y);
+				mapSlotRow.Size = new Size(inner, Ui.S(46));
+				y += Ui.S(50);
 			}
 		}
-		showOptionalChk.Location = new Point(2, num2 + 6);
-		num2 += 42;
-		Control control = pageInjector.Controls["shaderLabel"];
-		if (control != null)
-		{
-			control.Location = new Point(2, num2);
-		}
-		shaderCombo.Location = new Point(2, num2 + 20);
-		materialNameField.Location = new Point(2, num2 + 56);
-		materialNameField.Size = new Size(Math.Min(num, 320), 52);
-		int num3 = Math.Max(num2 + 120, pageInjector.Height - 78);
-		injectBtn.Location = new Point(2, num3);
-		injectorClearBtn.Location = new Point(injectBtn.Right + 12, num3);
-		injectorStatus.Location = new Point(2, num3 + injectBtn.Height + 8);
-		injectorStatus.Size = new Size(num, 20);
+		showOptionalChk.Location = new Point(Pad, y + Ui.S(8));
+		showOptionalChk.Width = inner;
+		int mx = mapsW + Gap;
+		int mw = Math.Max(side, width - mx);
+		injectorMaterialCard.Location = new Point(mx, 0);
+		injectorMaterialCard.Size = new Size(mw, height);
+		int min = mw - Pad * 2;
+		int my = Stack(capShader, shaderCombo, Pad, injectorMaterialCard.ContentTop, min);
+		materialNameField.Location = new Point(Pad, my);
+		materialNameField.Width = min;
+		injectorStatus.Location = new Point(Pad, materialNameField.Bottom + Ui.S(10));
+		injectorStatus.Size = new Size(min, Ui.S(54));
+		int by = height - Pad - injectBtn.Height;
+		injectBtn.Location = new Point(Pad, by);
+		injectBtn.Width = min;
+		injectorClearBtn.Location = new Point(Pad, by - Ui.S(8) - injectorClearBtn.Height);
+		injectorClearBtn.Width = min;
 	}
 
 	private Dictionary<MapType, string> CurrentMaps()
@@ -1146,7 +1241,6 @@ public partial class MainForm : Form
 		}
 		shaderCombo.SelectedIndex = 0;
 		materialNameField.Value = "M_material";
-		injectorStatus.Text = "";
 	}
 
 	private void ExportPreset()
@@ -1154,7 +1248,7 @@ public partial class MainForm : Form
 		Dictionary<MapType, string> dictionary = CurrentMaps();
 		if (dictionary.Count == 0)
 		{
-			MessageBox.Show("Assign at least one texture map first.", "Nothing to export", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
+			Notifier.Warning("Assign at least one texture map first.");
 			return;
 		}
 		string shaderType = ((shaderCombo.SelectedIndex != 1) ? "openPBRSurface" : "usdPreviewSurface");
@@ -1166,24 +1260,27 @@ public partial class MainForm : Form
 			string path = MaterialPreset.WriteAtomic(json);
 			injectorStatus.ForeColor = Theme.Current.TextMuted;
 			injectorStatus.Text = "Wrote " + MaterialPreset.ForwardSlashes(path);
+			Notifier.Success("Exported the " + text + " preset.");
 		}
 		catch (Exception ex)
 		{
-			injectorStatus.ForeColor = Color.FromArgb(226, 96, 90);
+			injectorStatus.ForeColor = Theme.Current.Danger;
 			injectorStatus.Text = "Export failed: " + ex.Message;
-			MessageBox.Show("Couldn't write the preset:" + Environment.NewLine + ex.Message, "Export failed", MessageBoxButtons.OK, MessageBoxIcon.Hand);
+			Notifier.Error("Couldn't write the preset: " + ex.Message);
 		}
 	}
+
+	// ---------------------------------------------------------------- shared
 
 	private static ImageCore.OutputFormat SelectedFormat(ComboBox combo)
 	{
 		return combo.SelectedIndex switch
 		{
-			1 => ImageCore.OutputFormat.Tga, 
-			2 => ImageCore.OutputFormat.Tiff, 
-			3 => ImageCore.OutputFormat.Bmp, 
-			4 => ImageCore.OutputFormat.Jpeg, 
-			_ => ImageCore.OutputFormat.Png, 
+			1 => ImageCore.OutputFormat.Tga,
+			2 => ImageCore.OutputFormat.Tiff,
+			3 => ImageCore.OutputFormat.Bmp,
+			4 => ImageCore.OutputFormat.Jpeg,
+			_ => ImageCore.OutputFormat.Png,
 		};
 	}
 
@@ -1191,11 +1288,11 @@ public partial class MainForm : Form
 	{
 		return fmt switch
 		{
-			ImageCore.OutputFormat.Tga => "Targa|*.tga", 
-			ImageCore.OutputFormat.Tiff => "TIFF|*.tif", 
-			ImageCore.OutputFormat.Bmp => "Bitmap|*.bmp", 
-			ImageCore.OutputFormat.Jpeg => "JPEG|*.jpg", 
-			_ => "PNG|*.png", 
+			ImageCore.OutputFormat.Tga => "Targa|*.tga",
+			ImageCore.OutputFormat.Tiff => "TIFF|*.tif",
+			ImageCore.OutputFormat.Bmp => "Bitmap|*.bmp",
+			ImageCore.OutputFormat.Jpeg => "JPEG|*.jpg",
+			_ => "PNG|*.png",
 		};
 	}
 
@@ -1204,15 +1301,15 @@ public partial class MainForm : Form
 		Palette current = Theme.Current;
 		BackColor = current.AppBackground;
 		header.BackColor = current.Surface;
-		toggleHint.ForeColor = current.TextMuted;
 		pageHost.BackColor = current.AppBackground;
-		Panel[] array = new Panel[9] { pagePack, pageUnpack, pageConvert, cvPanelN2H, cvPanelH2N, cvPanelAO, pageUtility, pageRenamer, pageInjector };
+		Panel[] array = new Panel[6] { pagePack, pageUnpack, pageConvert, pageUtility, pageRenamer, pageInjector };
 		foreach (Panel panel in array)
 		{
 			panel.BackColor = current.AppBackground;
 		}
 		StyleLabels(this, current);
 		ThemeAll(this, current);
+		Ui.ApplyWindowFrame(this, current);
 		LayoutHeader();
 		LayoutPackPage();
 		LayoutUnpackPage();
@@ -1233,14 +1330,8 @@ public partial class MainForm : Form
 		{
 			if (control is Label label && !(control is LinkLabel))
 			{
-				if (label == toggleHint || label.Name == "presetLabel" || label.Name == "fmtLabel" || label.Name == "opLabel" || label.Name == "ufLabel" || label.Name == "shaderLabel" || label.Name.StartsWith("cvLabel") || label == cvStatus || label == injectorStatus || label == renameStatus)
-				{
-					label.ForeColor = p.TextMuted;
-				}
-				else
-				{
-					label.ForeColor = p.Text;
-				}
+				bool muted = label.Name.StartsWith("cap") || label == injectorStatus || label == renameStatus || label == cvStatus;
+				label.ForeColor = muted ? p.TextMuted : p.Text;
 				label.BackColor = Color.Transparent;
 			}
 			StyleLabels(control, p);

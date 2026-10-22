@@ -13,7 +13,7 @@ public class FlatButton : Button, IThemeable
 		Secondary
 	}
 
-	private bool hover;
+	private readonly Tween hover;
 
 	private bool pressed;
 
@@ -24,26 +24,26 @@ public class FlatButton : Button, IThemeable
 	public FlatButton()
 	{
 		Role = ButtonRole.Accent;
-		CornerRadius = 10;
+		CornerRadius = Ui.S(8);
+		hover = new Tween(this, 140f);
 		base.FlatStyle = FlatStyle.Flat;
 		base.FlatAppearance.BorderSize = 0;
 		SetStyle(ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, value: true);
 		BackColor = Color.Transparent;
 		Cursor = Cursors.Hand;
-		Font = new Font("Segoe UI Semibold", 10f, FontStyle.Bold);
-		base.Height = 42;
+		Font = Ui.Strong;
+		base.Height = Ui.S(40);
 	}
 
 	protected override void OnMouseEnter(EventArgs e)
 	{
-		hover = true;
-		Invalidate();
+		hover.To(1f);
 		base.OnMouseEnter(e);
 	}
 
 	protected override void OnMouseLeave(EventArgs e)
 	{
-		hover = false;
+		hover.To(0f);
 		pressed = false;
 		Invalidate();
 		base.OnMouseLeave(e);
@@ -63,6 +63,12 @@ public class FlatButton : Button, IThemeable
 		base.OnMouseUp(e);
 	}
 
+	protected override void OnEnabledChanged(EventArgs e)
+	{
+		hover.Snap(0f);
+		base.OnEnabledChanged(e);
+	}
+
 	public void ApplyTheme(Palette p)
 	{
 		Invalidate();
@@ -75,35 +81,30 @@ public class FlatButton : Button, IThemeable
 		graphics.SmoothingMode = SmoothingMode.AntiAlias;
 		graphics.Clear(GfxUtil.ResolveBack(this));
 		Rectangle rectangle = new Rectangle(0, 0, base.Width - 1, base.Height - 1);
-		using GraphicsPath path = GfxUtil.RoundedRect(rectangle, CornerRadius);
-		Color color;
-		Color foreColor;
-		Color color2;
+		float h = hover.Value;
+		Color fill;
+		Color text;
+		Color border;
 		if (Role == ButtonRole.Accent)
 		{
-			color = (pressed ? Theme.Mix(current.Accent, Color.Black, 0.12) : ((!hover) ? current.Accent : current.AccentHover));
-			foreColor = current.AccentText;
-			color2 = color;
+			fill = pressed ? Theme.Mix(current.Accent, Color.Black, 0.12) : Theme.Mix(current.Accent, current.AccentHover, h);
+			text = current.AccentText;
+			border = fill;
 		}
 		else
 		{
-			color = (pressed ? current.SurfaceAlt : ((!hover) ? current.Surface : Theme.Mix(current.Surface, current.Accent, 0.08)));
-			foreColor = ((!base.Enabled) ? current.TextMuted : current.Text);
-			color2 = ((!hover) ? current.Border : current.Accent);
+			fill = pressed ? current.SurfaceAlt : Theme.Mix(current.SurfaceAlt, Theme.Mix(current.SurfaceAlt, current.Accent, 0.12), h);
+			text = current.Text;
+			border = Theme.Mix(current.Border, current.Accent, h);
 		}
 		if (!base.Enabled)
 		{
-			color = Theme.Mix(color, current.AppBackground, 0.5);
-			foreColor = current.TextMuted;
+			fill = Theme.Mix(Role == ButtonRole.Accent ? current.SurfaceAlt : fill, GfxUtil.ResolveBack(this), 0.3);
+			border = Role == ButtonRole.Accent ? fill : current.Border;
+			text = current.TextMuted;
 		}
-		using (SolidBrush brush = new SolidBrush(color))
-		{
-			graphics.FillPath(brush, path);
-		}
-		using (Pen pen = new Pen(color2, (Role != ButtonRole.Secondary) ? 1f : 1.4f))
-		{
-			graphics.DrawPath(pen, path);
-		}
-		TextRenderer.DrawText(graphics, Text, Font, rectangle, foreColor, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+		GfxUtil.FillRounded(graphics, rectangle, CornerRadius, fill);
+		GfxUtil.DrawRounded(graphics, rectangle, CornerRadius, border);
+		TextRenderer.DrawText(graphics, Text, Font, rectangle, text, TextFormatFlags.EndEllipsis | TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
 	}
 }

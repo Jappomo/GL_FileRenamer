@@ -4,11 +4,12 @@ using System.Windows.Forms;
 
 namespace GLMapPacker;
 
+// Small caption above a themed text field.
 public class LabeledField : Panel, IThemeable
 {
-	private Label label;
+	private readonly Label label;
 
-	private TextBox box;
+	private readonly ThemedTextBox field;
 
 	public string LabelText
 	{
@@ -26,15 +27,15 @@ public class LabeledField : Panel, IThemeable
 	{
 		get
 		{
-			return box.Text;
+			return field.Text;
 		}
 		set
 		{
-			box.Text = value;
+			field.Text = value;
 		}
 	}
 
-	public TextBox Box => box;
+	public TextBox Box => field.Box;
 
 	public event EventHandler ValueChanged;
 
@@ -42,21 +43,19 @@ public class LabeledField : Panel, IThemeable
 	{
 		SetStyle(ControlStyles.SupportsTransparentBackColor, value: true);
 		BackColor = Color.Transparent;
-		base.Height = 52;
+		base.Height = Ui.S(56);
 		label = new Label
 		{
 			Text = labelText,
 			AutoSize = true,
-			Location = new Point(2, 0),
-			Font = new Font("Segoe UI", 9f)
+			Location = new Point(0, 0),
+			Font = Ui.Small
 		};
-		box = new TextBox
+		field = new ThemedTextBox
 		{
-			BorderStyle = BorderStyle.FixedSingle,
-			Location = new Point(2, 22),
-			Font = new Font("Segoe UI", 10f)
+			Location = new Point(0, Ui.S(20))
 		};
-		box.TextChanged += delegate
+		field.TextChanged += delegate
 		{
 			if (this.ValueChanged != null)
 			{
@@ -64,10 +63,10 @@ public class LabeledField : Panel, IThemeable
 			}
 		};
 		base.Controls.Add(label);
-		base.Controls.Add(box);
+		base.Controls.Add(field);
 		base.Resize += delegate
 		{
-			box.Width = base.Width - 4;
+			field.Width = base.Width;
 		};
 	}
 
@@ -75,8 +74,6 @@ public class LabeledField : Panel, IThemeable
 	{
 		label.ForeColor = p.TextMuted;
 		label.BackColor = Color.Transparent;
-		box.BackColor = p.SurfaceAlt;
-		box.ForeColor = p.Text;
 		Invalidate();
 	}
 }

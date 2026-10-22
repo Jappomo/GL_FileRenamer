@@ -4,15 +4,22 @@ using System.Windows.Forms;
 
 namespace GLMapPacker;
 
+// Rounded surface panel with an optional title; used to group related controls.
 public class TitledCard : Panel, IThemeable
 {
 	public string Title { get; set; }
 
 	public int CornerRadius { get; set; }
 
+	// Inner padding used by the layouts that place controls in a card.
+	public static int Pad => Ui.S(16);
+
+	// Y where content starts: below the title when there is one.
+	public int ContentTop => string.IsNullOrEmpty(Title) ? Pad : Ui.S(46);
+
 	public TitledCard()
 	{
-		CornerRadius = 12;
+		CornerRadius = Ui.S(12);
 		SetStyle(ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, value: true);
 		BackColor = Color.Transparent;
 	}
@@ -33,21 +40,11 @@ public class TitledCard : Panel, IThemeable
 		graphics.SmoothingMode = SmoothingMode.AntiAlias;
 		graphics.Clear(GfxUtil.ResolveBack(this));
 		Rectangle r = new Rectangle(0, 0, base.Width - 1, base.Height - 1);
-		using (GraphicsPath path = GfxUtil.RoundedRect(r, CornerRadius))
-		{
-			using (SolidBrush brush = new SolidBrush(current.Surface))
-			{
-				graphics.FillPath(brush, path);
-			}
-			using Pen pen = new Pen(current.Border, 1f);
-			graphics.DrawPath(pen, path);
-		}
+		GfxUtil.FillRounded(graphics, r, CornerRadius, current.Surface);
+		GfxUtil.DrawRounded(graphics, r, CornerRadius, current.Border);
 		if (!string.IsNullOrEmpty(Title))
 		{
-			using (Font font = new Font("Segoe UI Semibold", 10.5f, FontStyle.Bold))
-			{
-				TextRenderer.DrawText(graphics, Title, font, new Point(16, 12), current.Text);
-			}
+			TextRenderer.DrawText(graphics, Title, Ui.Title, new Point(Pad, Ui.S(14)), current.Text);
 		}
 	}
 }

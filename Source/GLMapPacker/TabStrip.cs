@@ -5,6 +5,7 @@ using System.Windows.Forms;
 
 namespace GLMapPacker;
 
+// Segmented tab control: the selected pill slides to the clicked tab.
 public class TabStrip : Control, IThemeable
 {
 	private string[] tabs = new string[0];
@@ -12,6 +13,10 @@ public class TabStrip : Control, IThemeable
 	private int selected;
 
 	private int hoverIndex = -1;
+
+	private readonly Tween slide;
+
+	private int Inset => Ui.S(4);
 
 	public string[] Tabs
 	{
@@ -22,6 +27,7 @@ public class TabStrip : Control, IThemeable
 		set
 		{
 			tabs = value ?? new string[0];
+			base.Width = PreferredWidth;
 			Invalidate();
 		}
 	}
@@ -37,7 +43,7 @@ public class TabStrip : Control, IThemeable
 			if (value != selected)
 			{
 				selected = value;
-				Invalidate();
+				slide.To(value);
 				if (this.SelectedIndexChanged != null)
 				{
 					this.SelectedIndexChanged(this, EventArgs.Empty);
@@ -48,15 +54,18 @@ public class TabStrip : Control, IThemeable
 
 	public int PillWidth { get; set; }
 
+	public int PreferredWidth => tabs.Length * PillWidth + Inset * 2;
+
 	public event EventHandler SelectedIndexChanged;
 
 	public TabStrip()
 	{
-		PillWidth = 110;
+		PillWidth = Ui.S(96);
+		slide = new Tween(this, 220f);
 		SetStyle(ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, value: true);
 		BackColor = Color.Transparent;
 		Cursor = Cursors.Hand;
-		base.Height = 40;
+		base.Height = Ui.S(38);
 	}
 
 	public void ApplyTheme(Palette p)
@@ -66,8 +75,8 @@ public class TabStrip : Control, IThemeable
 
 	private int IndexAt(int x)
 	{
-		int num = x / (PillWidth + 8);
-		return (num < 0 || num >= tabs.Length) ? (-1) : num;
+		int num = (x - Inset) / PillWidth;
+		return (x < Inset || num >= tabs.Length) ? (-1) : num;
 	}
 
 	protected override void OnMouseMove(MouseEventArgs e)
@@ -98,33 +107,33 @@ public class TabStrip : Control, IThemeable
 		base.OnMouseDown(e);
 	}
 
+	private Rectangle PillRect(float index)
+	{
+		return new Rectangle(Inset + (int)Math.Round(index * PillWidth), Inset, PillWidth, base.Height - Inset * 2 - 1);
+	}
+
 	protected override void OnPaint(PaintEventArgs e)
 	{
 		Palette current = Theme.Current;
 		Graphics graphics = e.Graphics;
 		graphics.SmoothingMode = SmoothingMode.AntiAlias;
 		graphics.Clear(GfxUtil.ResolveBack(this));
-		using Font font = new Font("Segoe UI Semibold", 10f, FontStyle.Bold);
+		Rectangle track = new Rectangle(0, 0, PreferredWidth - 1, base.Height - 1);
+		int radius = Ui.S(10);
+		GfxUtil.FillRounded(graphics, track, radius, current.SurfaceAlt);
+		GfxUtil.DrawRounded(graphics, track, radius, current.Border);
+		if (hoverIndex >= 0 && hoverIndex != selected)
+		{
+			GfxUtil.FillRounded(graphics, PillRect(hoverIndex), radius - Inset, Theme.Mix(current.SurfaceAlt, current.Text, 0.06));
+		}
+		GfxUtil.FillRounded(graphics, PillRect(slide.Value), radius - Inset, current.Accent);
+		Font font = Ui.Strong;
 		for (int i = 0; i < tabs.Length; i++)
 		{
-			Rectangle rectangle = new Rectangle(i * (PillWidth + 8), 4, PillWidth, base.Height - 10);
-			if (i == selected)
-			{
-				using (GraphicsPath path = GfxUtil.RoundedRect(rectangle, 9))
-				{
-					using SolidBrush brush = new SolidBrush(current.Accent);
-					graphics.FillPath(brush, path);
-				}
-				TextRenderer.DrawText(graphics, tabs[i], font, rectangle, current.AccentText, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-				continue;
-			}
-			if (i == hoverIndex)
-			{
-				using GraphicsPath path2 = GfxUtil.RoundedRect(rectangle, 9);
-				using SolidBrush brush2 = new SolidBrush(current.SurfaceAlt);
-				graphics.FillPath(brush2, path2);
-			}
-			TextRenderer.DrawText(graphics, tabs[i], font, rectangle, current.TextMuted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+			// Text turns white as the sliding pill passes underneath it.
+			float under = Math.Max(0f, 1f - Math.Abs(slide.Value - i));
+			Color color = Theme.Mix(i == hoverIndex ? current.Text : current.TextMuted, current.AccentText, under);
+			TextRenderer.DrawText(graphics, tabs[i], font, PillRect(i), color, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
 		}
 	}
 }

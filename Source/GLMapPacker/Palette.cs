@@ -24,5 +24,11 @@ public sealed class Palette
 
 	public Color TrackBackground;
 
+	public Color Success;
+
+	public Color Warning;
+
+	public Color Danger;
+
 	public bool IsDark;
 }

@@ -5,34 +5,41 @@ namespace GLMapPacker;
 
 public static class Theme
 {
+	// One blue accent in both themes; dark mode uses a slightly brighter blue to keep contrast.
 	public static readonly Palette Light = new Palette
 	{
 		IsDark = false,
-		AppBackground = FromHex("#F4F6F9"),
+		AppBackground = FromHex("#F3F5F8"),
 		Surface = FromHex("#FFFFFF"),
-		SurfaceAlt = FromHex("#EDF1F6"),
-		Border = FromHex("#D9DEE7"),
-		Text = FromHex("#1B2430"),
-		TextMuted = FromHex("#5C6B7A"),
+		SurfaceAlt = FromHex("#EEF1F5"),
+		Border = FromHex("#DCE1E8"),
+		Text = FromHex("#18202B"),
+		TextMuted = FromHex("#5E6B7A"),
 		Accent = FromHex("#2F6BFF"),
-		AccentHover = FromHex("#4C82FF"),
+		AccentHover = FromHex("#4A7FFF"),
 		AccentText = FromHex("#FFFFFF"),
-		TrackBackground = FromHex("#E2E7EF")
+		TrackBackground = FromHex("#E1E6ED"),
+		Success = FromHex("#1F9D61"),
+		Warning = FromHex("#C98A0C"),
+		Danger = FromHex("#D9443F")
 	};
 
 	public static readonly Palette Dark = new Palette
 	{
 		IsDark = true,
-		AppBackground = FromHex("#1B1E24"),
-		Surface = FromHex("#252A32"),
-		SurfaceAlt = FromHex("#2E343D"),
-		Border = FromHex("#3A414B"),
-		Text = FromHex("#ECEFF3"),
-		TextMuted = FromHex("#9AA5B1"),
-		Accent = FromHex("#FF8A73"),
-		AccentHover = FromHex("#FFA491"),
-		AccentText = FromHex("#241009"),
-		TrackBackground = FromHex("#31373F")
+		AppBackground = FromHex("#15171C"),
+		Surface = FromHex("#1E2128"),
+		SurfaceAlt = FromHex("#272B33"),
+		Border = FromHex("#323845"),
+		Text = FromHex("#ECEFF4"),
+		TextMuted = FromHex("#98A2AF"),
+		Accent = FromHex("#3D73FF"),
+		AccentHover = FromHex("#5686FF"),
+		AccentText = FromHex("#FFFFFF"),
+		TrackBackground = FromHex("#2C313A"),
+		Success = FromHex("#3CC285"),
+		Warning = FromHex("#E8B33D"),
+		Danger = FromHex("#F06560")
 	};
 
 	private static Palette current = Dark;

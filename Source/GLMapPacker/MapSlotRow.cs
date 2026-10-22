@@ -23,7 +23,7 @@ public class MapSlotRow : Control, IThemeable
 		Slot = slot;
 		SetStyle(ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, value: true);
 		BackColor = Color.Transparent;
-		base.Height = 46;
+		base.Height = Ui.S(46);
 		AllowDrop = true;
 		base.DragEnter += OnDragEnter;
 		base.DragLeave += delegate
@@ -35,8 +35,8 @@ public class MapSlotRow : Control, IThemeable
 		clearBtn = new IconButton
 		{
 			Text = "×",
-			Size = new Size(26, 26),
-			Font = new Font("Segoe UI", 12f),
+			Size = Ui.S(26, 26),
+			Font = Ui.Font(12f),
 			Visible = false
 		};
 		clearBtn.Click += delegate
@@ -46,7 +46,7 @@ public class MapSlotRow : Control, IThemeable
 		base.Controls.Add(clearBtn);
 		base.Resize += delegate
 		{
-			clearBtn.Location = new Point(base.Width - clearBtn.Width - 8, (base.Height - clearBtn.Height) / 2);
+			clearBtn.Location = new Point(base.Width - clearBtn.Width - Ui.S(10), (base.Height - clearBtn.Height) / 2);
 		};
 	}
 
@@ -101,24 +101,21 @@ public class MapSlotRow : Control, IThemeable
 		Graphics graphics = e.Graphics;
 		graphics.SmoothingMode = SmoothingMode.AntiAlias;
 		graphics.Clear(GfxUtil.ResolveBack(this));
-		int num = 150;
-		using (Font font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold))
-		{
-			TextRenderer.DrawText(graphics, MaterialPreset.Label(Slot), font, new Rectangle(2, 0, num - 8, base.Height), current.Text, TextFormatFlags.VerticalCenter);
-		}
+		int num = Ui.S(130);
+		TextRenderer.DrawText(graphics, MaterialPreset.Label(Slot), Ui.Font(9.5f, semibold: true), new Rectangle(0, 0, num - Ui.S(8), base.Height), current.Text, TextFormatFlags.VerticalCenter);
 		int num2 = num;
-		int num3 = base.Width - clearBtn.Width - 16;
-		Rectangle r = new Rectangle(num2, 6, num3 - num2, base.Height - 12);
+		int num3 = base.Width;
+		Rectangle r = new Rectangle(num2, Ui.S(4), num3 - num2 - 1, base.Height - Ui.S(8));
 		bool flag = !string.IsNullOrEmpty(FilePath);
-		using (GraphicsPath path = GfxUtil.RoundedRect(r, 8))
+		using (GraphicsPath path = GfxUtil.RoundedRect(r, Ui.S(8)))
 		{
 			Color color = ((!dragHover) ? current.SurfaceAlt : Theme.Mix(current.SurfaceAlt, current.Accent, 0.28));
 			using (SolidBrush brush = new SolidBrush(color))
 			{
 				graphics.FillPath(brush, path);
 			}
-			Color color2 = (dragHover ? current.Accent : ((!flag) ? Theme.Mix(current.Border, current.SurfaceAlt, 0.3) : current.Border));
-			float width = ((!dragHover) ? 1f : 1.6f);
+			Color color2 = (dragHover ? current.Accent : ((!flag) ? Theme.Mix(current.Border, current.TextMuted, 0.3) : current.Border));
+			float width = ((!dragHover) ? 1f : Ui.S(1.6f));
 			if (!flag && !dragHover)
 			{
 				Pen pen = new Pen(color2, width);
@@ -134,8 +131,7 @@ public class MapSlotRow : Control, IThemeable
 		}
 		string text = ((!flag) ? "drop a texture here" : Path.GetFileName(FilePath));
 		Color foreColor = ((!flag) ? current.TextMuted : current.Text);
-		Rectangle bounds = new Rectangle(r.X + 12, r.Y, r.Width - 20, r.Height);
-		using Font font2 = new Font("Segoe UI", 9.5f, (!flag) ? FontStyle.Italic : FontStyle.Regular);
-		TextRenderer.DrawText(graphics, text, font2, bounds, foreColor, TextFormatFlags.PathEllipsis | TextFormatFlags.VerticalCenter);
+		Rectangle bounds = new Rectangle(r.X + Ui.S(12), r.Y, r.Width - Ui.S(24) - (flag ? clearBtn.Width : 0), r.Height);
+		TextRenderer.DrawText(graphics, text, Ui.Body, bounds, foreColor, TextFormatFlags.PathEllipsis | TextFormatFlags.VerticalCenter);
 	}
 }

@@ -7,7 +7,7 @@ namespace GLMapPacker;
 
 public class IconButton : Button, IThemeable
 {
-	private bool hover;
+	private readonly Tween hover;
 
 	private bool pressed;
 
@@ -15,7 +15,8 @@ public class IconButton : Button, IThemeable
 
 	public IconButton()
 	{
-		CornerRadius = 8;
+		CornerRadius = Ui.S(6);
+		hover = new Tween(this, 120f);
 		base.FlatStyle = FlatStyle.Flat;
 		base.FlatAppearance.BorderSize = 0;
 		SetStyle(ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, value: true);
@@ -25,14 +26,13 @@ public class IconButton : Button, IThemeable
 
 	protected override void OnMouseEnter(EventArgs e)
 	{
-		hover = true;
-		Invalidate();
+		hover.To(1f);
 		base.OnMouseEnter(e);
 	}
 
 	protected override void OnMouseLeave(EventArgs e)
 	{
-		hover = false;
+		hover.To(0f);
 		pressed = false;
 		Invalidate();
 		base.OnMouseLeave(e);
@@ -64,12 +64,8 @@ public class IconButton : Button, IThemeable
 		graphics.SmoothingMode = SmoothingMode.AntiAlias;
 		graphics.Clear(GfxUtil.ResolveBack(this));
 		Rectangle rectangle = new Rectangle(0, 0, base.Width - 1, base.Height - 1);
-		Color color = (pressed ? current.Accent : ((!hover) ? current.SurfaceAlt : Theme.Mix(current.SurfaceAlt, current.Accent, 0.25)));
-		using (GraphicsPath path = GfxUtil.RoundedRect(rectangle, CornerRadius))
-		{
-			using SolidBrush brush = new SolidBrush(color);
-			graphics.FillPath(brush, path);
-		}
+		Color color = pressed ? current.Accent : Theme.Mix(current.SurfaceAlt, Theme.Mix(current.SurfaceAlt, current.Accent, 0.25), hover.Value);
+		GfxUtil.FillRounded(graphics, rectangle, CornerRadius, color);
 		if (base.Image != null)
 		{
 			int width = base.Image.Width;
@@ -78,7 +74,7 @@ public class IconButton : Button, IThemeable
 		}
 		else if (!string.IsNullOrEmpty(Text))
 		{
-			Color foreColor = ((!pressed) ? current.Text : current.AccentText);
+			Color foreColor = pressed ? current.AccentText : Theme.Mix(current.TextMuted, current.Text, hover.Value);
 			TextRenderer.DrawText(graphics, Text, Font, rectangle, foreColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
 		}
 	}

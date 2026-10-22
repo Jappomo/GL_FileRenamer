@@ -14,7 +14,7 @@ public class ChannelView : TitledCard
 
 	private PreviewBox preview;
 
-	private TextBox suffixBox;
+	private ThemedTextBox suffixBox;
 
 	private IconButton saveBtn;
 
@@ -23,6 +23,8 @@ public class ChannelView : TitledCard
 	private string sourcePath;
 
 	public string ChannelName { get; set; }
+
+	public bool HasImage => image != null;
 
 	public Color DotColor { get; set; }
 
@@ -42,8 +44,8 @@ public class ChannelView : TitledCard
 	{
 		ChannelName = channelName;
 		DotColor = dotColor;
-		base.CornerRadius = 12;
-		base.Padding = new Padding(12);
+		base.CornerRadius = Ui.S(12);
+		base.Padding = new Padding(Ui.S(12));
 		Build(defaultSuffix);
 	}
 
@@ -52,37 +54,36 @@ public class ChannelView : TitledCard
 		dot = new Label
 		{
 			AutoSize = false,
-			Size = new Size(12, 12),
-			Location = new Point(14, 15)
+			Size = Ui.S(12, 12),
+			Location = new Point(Ui.S(16), Ui.S(17))
 		};
 		dot.Paint += delegate(object s, PaintEventArgs e)
 		{
 			e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
 			using SolidBrush brush = new SolidBrush(DotColor);
-			e.Graphics.FillEllipse(brush, 0, 0, 11, 11);
+			e.Graphics.FillEllipse(brush, 0, 0, dot.Width - 1, dot.Height - 1);
 		};
 		nameLabel = new Label
 		{
 			AutoSize = true,
 			Text = ChannelName,
-			Location = new Point(32, 12),
-			Font = new Font("Segoe UI Semibold", 10f, FontStyle.Bold)
+			Location = new Point(Ui.S(34), Ui.S(13)),
+			Font = Ui.Strong
 		};
 		preview = new PreviewBox
 		{
-			EmptyText = ""
+			EmptyText = "",
+			Interactive = false
 		};
-		suffixBox = new TextBox
+		suffixBox = new ThemedTextBox
 		{
-			Text = defaultSuffix,
-			BorderStyle = BorderStyle.FixedSingle,
-			Font = new Font("Segoe UI", 9f)
+			Text = defaultSuffix
 		};
 		saveBtn = new IconButton
 		{
 			Text = "↓",
-			Size = new Size(30, 26),
-			Font = new Font("Segoe UI", 11f)
+			Size = Ui.S(34, 34),
+			Font = Ui.Font(11f)
 		};
 		saveBtn.Click += delegate
 		{
@@ -102,15 +103,15 @@ public class ChannelView : TitledCard
 
 	private void Relayout()
 	{
-		int num = 12;
-		int num2 = 38;
-		int num3 = 28;
+		int num = Ui.S(12);
+		int num2 = Ui.S(44);
+		int num3 = suffixBox.Height;
 		preview.Location = new Point(num, num2);
-		preview.Size = new Size(base.Width - num * 2, base.Height - num2 - num3 - num - 6);
-		int num4 = base.Height - num3 - num + 2;
+		preview.Size = new Size(base.Width - num * 2, Math.Max(Ui.S(40), base.Height - num2 - num3 - num - Ui.S(10)));
+		int num4 = base.Height - num3 - num;
 		saveBtn.Location = new Point(base.Width - saveBtn.Width - num, num4);
-		suffixBox.Location = new Point(num, num4 + 2);
-		suffixBox.Size = new Size(base.Width - num * 3 - saveBtn.Width, num3);
+		suffixBox.Location = new Point(num, num4);
+		suffixBox.Width = base.Width - num * 2 - Ui.S(8) - saveBtn.Width;
 	}
 
 	public void SetImage(Bitmap bmp, string sourceFilePath)
@@ -127,11 +128,6 @@ public class ChannelView : TitledCard
 	public override void ApplyTheme(Palette p)
 	{
 		base.ApplyTheme(p);
-		if (suffixBox != null)
-		{
-			suffixBox.BackColor = p.SurfaceAlt;
-			suffixBox.ForeColor = p.Text;
-		}
 		if (nameLabel != null)
 		{
 			nameLabel.ForeColor = p.Text;
@@ -167,7 +163,7 @@ public class ChannelView : TitledCard
 			}
 			catch (Exception ex)
 			{
-				MessageBox.Show("Save failed:" + Environment.NewLine + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Hand);
+				Notifier.Error("Couldn't save " + text3 + ": " + ex.Message);
 				return;
 			}
 		}
@@ -185,11 +181,12 @@ public class ChannelView : TitledCard
 				try
 				{
 					ImageCore.Save(image, saveFileDialog.FileName, ImageCore.FormatFromExtension(saveFileDialog.FileName, ImageCore.OutputFormat.Png));
+					Notifier.Success("Saved " + Path.GetFileName(saveFileDialog.FileName));
 					return;
 				}
 				catch (Exception ex2)
 				{
-					MessageBox.Show("Save failed:" + Environment.NewLine + ex2.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Hand);
+					Notifier.Error("Couldn't save: " + ex2.Message);
 					return;
 				}
 			}

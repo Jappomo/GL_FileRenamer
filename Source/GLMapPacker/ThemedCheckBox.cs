@@ -1,3 +1,4 @@
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -6,13 +7,29 @@ namespace GLMapPacker;
 
 public class ThemedCheckBox : CheckBox, IThemeable
 {
+	private readonly Tween check;
+
 	public ThemedCheckBox()
 	{
+		check = new Tween(this, 140f);
 		SetStyle(ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, value: true);
 		BackColor = Color.Transparent;
 		Cursor = Cursors.Hand;
-		Font = new Font("Segoe UI", 10f);
-		base.Height = 26;
+		Font = Ui.Body;
+		base.Height = Ui.S(26);
+	}
+
+	protected override void OnCheckedChanged(EventArgs e)
+	{
+		if (IsHandleCreated && Visible)
+		{
+			check.To(base.Checked ? 1f : 0f);
+		}
+		else
+		{
+			check.Snap(base.Checked ? 1f : 0f);
+		}
+		base.OnCheckedChanged(e);
 	}
 
 	public void ApplyTheme(Palette p)
@@ -26,32 +43,27 @@ public class ThemedCheckBox : CheckBox, IThemeable
 		Graphics graphics = e.Graphics;
 		graphics.SmoothingMode = SmoothingMode.AntiAlias;
 		graphics.Clear(GfxUtil.ResolveBack(this));
-		int num = 20;
+		int num = Ui.S(18);
 		int y = (base.Height - num) / 2;
 		Rectangle r = new Rectangle(0, y, num, num);
-		using (GraphicsPath path = GfxUtil.RoundedRect(r, 5))
+		float t = check.Value;
+		GfxUtil.FillRounded(graphics, r, Ui.S(5), Theme.Mix(current.SurfaceAlt, current.Accent, t));
+		GfxUtil.DrawRounded(graphics, r, Ui.S(5), Theme.Mix(current.Border, current.Accent, t), Ui.S(1.2f));
+		if (t > 0.05f)
 		{
-			Color color = ((!base.Checked) ? current.SurfaceAlt : current.Accent);
-			Color color2 = ((!base.Checked) ? current.Border : current.Accent);
-			using (SolidBrush brush = new SolidBrush(color))
+			using Pen pen = new Pen(Theme.Mix(current.Accent, current.AccentText, t), Ui.S(2f));
+			pen.StartCap = LineCap.Round;
+			pen.EndCap = LineCap.Round;
+			pen.LineJoin = LineJoin.Round;
+			float s = num / 18f;
+			graphics.DrawLines(pen, new PointF[3]
 			{
-				graphics.FillPath(brush, path);
-			}
-			using Pen pen = new Pen(color2, 1.4f);
-			graphics.DrawPath(pen, path);
-		}
-		if (base.Checked)
-		{
-			using Pen pen2 = new Pen(current.AccentText, 2.2f);
-			pen2.StartCap = LineCap.Round;
-			pen2.EndCap = LineCap.Round;
-			graphics.DrawLines(pen2, new Point[3]
-			{
-				new Point(r.Left + 5, r.Top + 10),
-				new Point(r.Left + 9, r.Top + 14),
-				new Point(r.Left + 15, r.Top + 6)
+				new PointF(r.Left + 4.5f * s, r.Top + 9.2f * s),
+				new PointF(r.Left + 7.8f * s, r.Top + 12.4f * s),
+				new PointF(r.Left + 13.5f * s, r.Top + 5.8f * s)
 			});
 		}
-		TextRenderer.DrawText(bounds: new Rectangle(num + 10, 0, base.Width - num - 10, base.Height), dc: graphics, text: Text, font: Font, foreColor: current.Text, flags: TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
+		Rectangle bounds = new Rectangle(num + Ui.S(10), 0, base.Width - num - Ui.S(10), base.Height);
+		TextRenderer.DrawText(graphics, Text, Font, bounds, current.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
 	}
 }
