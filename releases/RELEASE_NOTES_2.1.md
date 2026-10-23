@@ -9,10 +9,11 @@ Requires Windows 10 or 11 with .NET Framework 4.8.
   - **Normal → Height**: whole-image FFT Poisson integration, with height intensity, mid-point baseline, contrast and surface blur; OpenGL or DirectX input.
   - **Height → Normal**: Sobel gradient, with strength, smoothing and invert; OpenGL or DirectX output.
   - **Height → Ambient Occlusion**: horizon-based AO (HBAO), with radius, depth, intensity, contrast and quality.
-  - Normal → Height **integration modes**: *Tileable* for tiling textures; *UV islands* (with a UV mask or ID map), which solves each island on its own and keeps broad shapes; and *Mesh-aware*, which reads the low-poly OBJ and stitches UV seams so heights meet across islands, even rotated ones. Plus a *Flatten broad shapes* slider for detail-only height.
+  - Normal → Height **integration modes**: *Tileable* for tiling textures; *UV islands* (with a UV mask or ID map), which solves each island on its own and keeps broad shapes; and *Mesh-aware*, which reads the low-poly OBJ and stitches UV seams so heights meet across islands, even rotated ones. Plus *Flatten broad* and *Detail boost* sliders to balance broad shapes against fine detail.
   - Float32 processing and **true 16-bit PNG** input and output. The 8-bit / 16-bit toggle follows the loaded file.
   - Output resolution: source size, or 512 to 4096 px.
 - **New interface**: card layout, segmented tabs, custom dropdowns and text fields, one accent color in light and dark themes, toasts and a status bar.
+- **Slider reset icon**: a changed slider shows a ↺ button that returns it to its default.
 - **Better previews**: wheel zoom, pan, Fit, R/G/B/A channel view, size and zoom readout, a draggable before/after divider, and drag-and-drop drop zones.
 - **High-DPI support**, a dark title bar on Windows 10 and 11, and a new app icon.
 

@@ -19,6 +19,11 @@ public class ThemedSlider : Control, IThemeable
 
 	private bool hover;
 
+	private bool resetHover;
+
+	// Where the reset icon was drawn (empty while the value is at its default).
+	private Rectangle resetRect;
+
 	public string Caption { get; set; }
 
 	public string Suffix { get; set; }
@@ -107,7 +112,12 @@ public class ThemedSlider : Control, IThemeable
 
 	protected override void OnMouseDown(MouseEventArgs e)
 	{
-		if (e.Button == MouseButtons.Left)
+		if (e.Button == MouseButtons.Left && !resetRect.IsEmpty && resetRect.Contains(e.Location))
+		{
+			Value = DefaultValue;
+			resetHover = false;
+		}
+		else if (e.Button == MouseButtons.Left)
 		{
 			dragging = true;
 			base.Capture = true;
@@ -121,6 +131,12 @@ public class ThemedSlider : Control, IThemeable
 		if (dragging)
 		{
 			SetFromX(e.X);
+		}
+		bool overReset = !dragging && !resetRect.IsEmpty && resetRect.Contains(e.Location);
+		if (overReset != resetHover)
+		{
+			resetHover = overReset;
+			Invalidate();
 		}
 		base.OnMouseMove(e);
 	}
@@ -143,6 +159,7 @@ public class ThemedSlider : Control, IThemeable
 	protected override void OnMouseLeave(EventArgs e)
 	{
 		hover = false;
+		resetHover = false;
 		Invalidate();
 		base.OnMouseLeave(e);
 	}
@@ -169,7 +186,16 @@ public class ThemedSlider : Control, IThemeable
 		Rectangle top = new Rectangle(0, 0, base.Width, Ui.S(22));
 		TextRenderer.DrawText(graphics, Caption, Ui.Body, top, current.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
 		string text = val.ToString("F" + Decimals, CultureInfo.InvariantCulture) + Suffix;
-		TextRenderer.DrawText(graphics, text, Ui.Body, top, val != DefaultValue ? current.Accent : current.TextMuted, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+		bool changed = val != DefaultValue;
+		TextRenderer.DrawText(graphics, text, Ui.Body, top, changed ? current.Accent : current.TextMuted, TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+		resetRect = Rectangle.Empty;
+		if (changed)
+		{
+			int textW = TextRenderer.MeasureText(graphics, text, Ui.Body, top.Size, TextFormatFlags.NoPadding).Width;
+			int size = Ui.S(18);
+			resetRect = new Rectangle(base.Width - textW - Ui.S(10) - size, (top.Height - size) / 2, size, size);
+			DrawResetIcon(graphics, resetRect, resetHover ? current.Accent : current.TextMuted, resetHover ? Theme.Mix(GfxUtil.ResolveBack(this), current.Accent, 0.15) : Color.Empty);
+		}
 		Rectangle t = TrackRect;
 		using (GraphicsPath path = GfxUtil.RoundedRect(t, t.Height / 2))
 		{
@@ -192,5 +218,34 @@ public class ThemedSlider : Control, IThemeable
 		}
 		using Pen pen = new Pen(current.Accent, Ui.S(2f));
 		graphics.DrawEllipse(pen, knob);
+	}
+
+	// Circular "reset" arrow: an open ring with an arrowhead at its upper end.
+	private static void DrawResetIcon(Graphics g, Rectangle r, Color color, Color back)
+	{
+		if (back != Color.Empty)
+		{
+			using SolidBrush b = new SolidBrush(back);
+			g.FillEllipse(b, r);
+		}
+		float cx = r.X + r.Width / 2f;
+		float cy = r.Y + r.Height / 2f;
+		float rad = r.Width * 0.27f;
+		using Pen pen = new Pen(color, Ui.S(1.5f));
+		pen.StartCap = LineCap.Round;
+		pen.EndCap = LineCap.Round;
+		g.DrawArc(pen, cx - rad, cy - rad, rad * 2f, rad * 2f, -60f, 290f);
+		// Arrowhead at the arc's start (pointing clockwise, top right).
+		double a = -60.0 * Math.PI / 180.0;
+		float ex = cx + rad * (float)Math.Cos(a);
+		float ey = cy + rad * (float)Math.Sin(a);
+		float h = r.Width * 0.2f;
+		using SolidBrush fill = new SolidBrush(color);
+		g.FillPolygon(fill, new PointF[3]
+		{
+			new PointF(ex + h * 0.9f, ey - h * 0.3f),
+			new PointF(ex - h * 0.45f, ey - h * 0.95f),
+			new PointF(ex - h * 0.1f, ey + h * 0.55f)
+		});
 	}
 }

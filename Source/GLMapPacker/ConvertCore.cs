@@ -40,6 +40,8 @@ public static class ConvertCore
 
 		public float FlattenBroad;
 
+		public float DetailBoost = 1f;
+
 		public float HeightIntensity = 1f;
 
 		public float Baseline = 0.5f;
@@ -105,14 +107,17 @@ public static class ConvertCore
 				BoxBlur3(data, w, h, sigma, wrap: false, raw.Valid);
 			}
 		}
-		if (s.FlattenBroad > 0f)
+		if (s.FlattenBroad > 0f || s.DetailBoost != 1f)
 		{
-			// Detail-only height: subtract a wide blur, so broad ramps and bulges flatten out.
+			// Split into broad shape (a wide blur) and detail (the rest), then weight each:
+			// Flatten turns the broad part down, Detail boost turns the fine part up. Broad shapes
+			// otherwise take most of the output range and the detail looks soft next to them.
 			float[] broad = (float[])data.Clone();
 			BoxBlur3(broad, w, h, 0.05f * Math.Max(w, h), raw.Valid == null, raw.Valid);
+			float keep = 1f - s.FlattenBroad;
 			for (int i = 0; i < data.Length; i++)
 			{
-				data[i] -= s.FlattenBroad * broad[i];
+				data[i] = broad[i] * keep + (data[i] - broad[i]) * s.DetailBoost;
 			}
 		}
 		if (raw.Valid != null)

@@ -91,7 +91,8 @@ Rebuilds a height map from a normal map's slopes, keeping both the fine detail a
 | **Mid-point baseline** | The gray level of the flat surface (0.5 = middle gray). Raise it if the map is mostly dents, lower it if it's mostly bumps. |
 | **Contrast** | Pushes heights toward the extremes (+) or flattens them (−), around the baseline. |
 | **Surface blur** | Smooths small imperfections in the normal map before they become height noise (in output pixels). |
-| **Flatten broad shapes** | Removes large, gentle shapes and keeps the detail. 0% keeps everything; 100% gives a detail-only height map. |
+| **Flatten broad** | Turns down the large, gentle shapes. 0% keeps them; 100% gives a detail-only height map. |
+| **Detail boost** | Turns up the fine detail. Broad shapes take most of the gray range, which can make detail look soft next to them; 1.5 to 2.5× brings back the crispness without losing the shapes. |
 | **Normal map format** | **OpenGL (Y+)** for Blender, Maya, Substance and most tools. **DirectX (Y−)** for Unreal and 3ds Max. If the result looks inverted, like hills where there should be holes, switch this. |
 | **Integration** | How the texture is joined up. See below. |
 
@@ -221,6 +222,6 @@ This creates the shader, its shading group and the file nodes, with color spaces
 
 ## Tips and shortcuts
 
-- **Sliders:** drag them, use the mouse wheel for fine steps, or double-click to reset to the default. A value shows in blue when it differs from the default.
+- **Sliders:** drag them, or use the mouse wheel for fine steps. When a value differs from its default it turns blue and a **↺ reset** icon appears next to it; click it (or double-click the slider) to go back to the default.
 - **Wrong normal direction?** If bumps look like dents in your engine, flip the green channel: use **Utility → Flip Y**, or switch **Normal map format** on the Convert tab.
 - **Tileable textures:** blur, Sobel and AO wrap around the edges, so seamless textures stay seamless.

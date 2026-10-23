@@ -51,6 +51,8 @@ public partial class MainForm
 
 	private ThemedSlider cvFlatten;
 
+	private ThemedSlider cvDetailBoost;
+
 	private ThemedComboBox cvIntegrationCombo;
 
 	private Label cvCapN2HFormat;
@@ -162,7 +164,8 @@ public partial class MainForm
 		cvBaseline = CvSlider("Mid-point baseline", 0.0, 1.0, 0.5, 2);
 		cvContrast = CvSlider("Contrast", -1.0, 1.0, 0.0, 2);
 		cvBlur = CvSlider("Surface blur", 0.0, 20.0, 0.0, 1, " px");
-		cvFlatten = CvSlider("Flatten broad shapes", 0.0, 100.0, 0.0, 0, "%");
+		cvFlatten = CvSlider("Flatten broad", 0.0, 100.0, 0.0, 0, "%");
+		cvDetailBoost = CvSlider("Detail boost", 1.0, 4.0, 1.0, 2, "×");
 		cvN2HFormatCombo = CvYCombo();
 		cvCapN2HFormat = CvLabel("N2HFmt", "Normal map format");
 		cvCapIntegration = CvLabel("Integration", "Integration");
@@ -203,7 +206,7 @@ public partial class MainForm
 		{
 			BackColor = Color.Transparent
 		};
-		cvPanelN2H.Controls.AddRange(new Control[13] { cvIntensity, cvBaseline, cvContrast, cvBlur, cvFlatten, cvCapN2HFormat, cvN2HFormatCombo, cvCapIntegration, cvIntegrationCombo, cvCapSourceFile, cvMaskBox, cvMeshBox, cvIntegrationHint });
+		cvPanelN2H.Controls.AddRange(new Control[14] { cvIntensity, cvBaseline, cvContrast, cvBlur, cvFlatten, cvDetailBoost, cvCapN2HFormat, cvN2HFormatCombo, cvCapIntegration, cvIntegrationCombo, cvCapSourceFile, cvMaskBox, cvMeshBox, cvIntegrationHint });
 		LayoutN2HPanel();
 		cvStrength = CvSlider("Strength", 0.0, 20.0, 2.0, 2);
 		cvSmoothing = CvSlider("Smoothing", 0.0, 10.0, 0.0, 1, " px");
@@ -372,14 +375,20 @@ public partial class MainForm
 	{
 		int width = cvPanelN2H.Width;
 		int y = 0;
-		foreach (ThemedSlider slider in new ThemedSlider[5] { cvIntensity, cvBaseline, cvContrast, cvBlur, cvFlatten })
+		foreach (ThemedSlider slider in new ThemedSlider[4] { cvIntensity, cvBaseline, cvContrast, cvBlur })
 		{
 			slider.Location = new Point(0, y);
 			slider.Width = width;
 			y += slider.Height + Ui.S(4);
 		}
-		y += Ui.S(4);
-		int half = (width - Ui.S(8)) / 2;
+		// Broad shape and detail amounts share a row.
+		int half = (width - Ui.S(16)) / 2;
+		cvFlatten.Location = new Point(0, y);
+		cvFlatten.Width = half;
+		cvDetailBoost.Location = new Point(half + Ui.S(16), y);
+		cvDetailBoost.Width = width - half - Ui.S(16);
+		y += cvFlatten.Height + Ui.S(8);
+		half = (width - Ui.S(8)) / 2;
 		cvCapN2HFormat.Location = new Point(0, y);
 		cvCapIntegration.Location = new Point(half + Ui.S(8), y);
 		cvN2HFormatCombo.Location = new Point(0, y + Ui.S(20));
@@ -621,6 +630,7 @@ public partial class MainForm
 		s.Contrast = (float)cvContrast.Value;
 		s.SurfaceBlur = (float)cvBlur.Value;
 		s.FlattenBroad = (float)(cvFlatten.Value / 100.0);
+		s.DetailBoost = (float)cvDetailBoost.Value;
 		s.Integration = cvIntegrationCombo.SelectedIndex switch
 		{
 			1 => ConvertCore.Integration.Islands,
