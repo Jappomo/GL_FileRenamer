@@ -148,6 +148,7 @@ Generates an AO map from a height map, using horizon-based ambient occlusion in 
 | **Height depth** | How tall the height map is, compared to the texture's width. Increase it for deeper, darker crevices. |
 | **Intensity** | Overall darkness of the occlusion. |
 | **Contrast** | Gamma on the result. Above 1 deepens shadows, below 1 lightens them. |
+| **Sampling** | **Detailed** (default) puts more samples close to each pixel, so fine cavities show up and large radii don't wash out. **Classic** spaces them evenly, as in earlier versions. |
 | **Quality** | 8, 16 or 32 sample directions. Higher quality is smoother but slower to save. |
 
 > **Tip:** use **16-bit** height maps where you can. 8-bit heights have only 256 levels, which shows up as contour lines in normals and AO. If an 8-bit height is all you have, a little **Smoothing** (Height → Normal) or a larger **Radius** (AO) hides the steps.

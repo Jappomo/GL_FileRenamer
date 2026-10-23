@@ -81,9 +81,33 @@ public static class ImageCore
 	public static Bitmap Load(string path)
 	{
 		byte[] buffer = File.ReadAllBytes(path);
+		if (string.Equals(Path.GetExtension(path), ".tga", StringComparison.OrdinalIgnoreCase))
+		{
+			return LoadTga(buffer);
+		}
 		using MemoryStream stream = new MemoryStream(buffer);
 		using Bitmap source = new Bitmap(stream);
 		return CloneArgb32(source);
+	}
+
+	// GDI+ has no TGA decoder, so TGA files are decoded here.
+	private static Bitmap LoadTga(byte[] file)
+	{
+		byte[] bgra = TgaReader.Decode(file, out var width, out var height);
+		Bitmap bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+		BitmapData data = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+		try
+		{
+			for (int y = 0; y < height; y++)
+			{
+				Marshal.Copy(bgra, y * width * 4, (IntPtr)(data.Scan0.ToInt64() + (long)y * data.Stride), width * 4);
+			}
+		}
+		finally
+		{
+			bitmap.UnlockBits(data);
+		}
+		return bitmap;
 	}
 
 	public static Bitmap CloneArgb32(Bitmap source)

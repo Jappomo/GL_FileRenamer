@@ -27,6 +27,12 @@ public static class ConvertCore
 		Mesh
 	}
 
+	public enum AoSampling
+	{
+		Detailed,
+		Classic
+	}
+
 	public sealed class Settings
 	{
 		public Mode Mode;
@@ -61,7 +67,7 @@ public static class ConvertCore
 		public bool DirectX;
 
 		// Height -> AO
-		public float AoRadius = 24f;
+		public float AoRadius = 32f;
 
 		public float AoDepth = 3f;
 
@@ -70,6 +76,10 @@ public static class ConvertCore
 		public float AoContrast = 1f;
 
 		public int AoDirections = 16;
+
+		// Dense puts more horizon samples close to each pixel (fine cavities) and keeps large radii
+		// from washing out; Classic spaces them evenly (the original look).
+		public AoSampling AoSampling = AoSampling.Detailed;
 
 		public Settings Clone()
 		{
@@ -524,6 +534,7 @@ public static class ConvertCore
 		float depth = s.AoDepth * 0.01f * w;
 		int dirs = Math.Max(4, s.AoDirections);
 		int steps = dirs >= 32 ? 16 : (dirs >= 16 ? 12 : 8);
+		bool dense = s.AoSampling == AoSampling.Detailed;
 		float[] ao = new float[w * h];
 		int done = 0;
 		Parallel.For(0, h, y =>
@@ -545,7 +556,8 @@ public static class ConvertCore
 					float dirOcc = 0f;
 					for (int st = 0; st < steps; st++)
 					{
-						float t = radius * (st + jitterS) / steps;
+						float f = (st + jitterS) / steps;
+						float t = radius * (dense ? f * f : f);
 						if (t < 0.5f)
 						{
 							continue;

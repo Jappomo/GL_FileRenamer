@@ -90,6 +90,8 @@ public partial class MainForm
 
 	private ThemedComboBox cvAoQualityCombo;
 
+	private ThemedComboBox cvAoSamplingCombo;
+
 	private ThemedComboBox cvResolutionCombo;
 
 	// 8-bit / 16-bit PNG output; follows the loaded file, click to override.
@@ -221,7 +223,7 @@ public partial class MainForm
 			QueueConvertPreview();
 		};
 		cvPanelH2N = CvModePanel(cvStrength, cvSmoothing, CvLabel("H2NFmt", "Normal map format"), cvH2NFormatCombo, cvInvertChk);
-		cvAoRadius = CvSlider("Radius", 1.0, 128.0, 24.0, 0, " px");
+		cvAoRadius = CvSlider("Radius", 1.0, 128.0, 32.0, 0, " px");
 		cvAoDepth = CvSlider("Height depth", 0.0, 20.0, 3.0, 2);
 		cvAoIntensity = CvSlider("Intensity", 0.0, 3.0, 1.0, 2);
 		cvAoContrast = CvSlider("Contrast", 0.2, 4.0, 1.0, 2);
@@ -235,7 +237,17 @@ public partial class MainForm
 		{
 			QueueConvertPreview();
 		};
-		cvPanelAO = CvModePanel(cvAoRadius, cvAoDepth, cvAoIntensity, cvAoContrast, CvLabel("AoQ", "Quality"), cvAoQualityCombo);
+		cvAoSamplingCombo = new ThemedComboBox
+		{
+			Width = CvColumnWidth
+		};
+		cvAoSamplingCombo.Items.AddRange(new object[2] { "Detailed (dense near each pixel)", "Classic (even spacing)" });
+		cvAoSamplingCombo.SelectedIndex = 0;
+		cvAoSamplingCombo.SelectedIndexChanged += delegate
+		{
+			QueueConvertPreview();
+		};
+		cvPanelAO = CvModePanel(cvAoRadius, cvAoDepth, cvAoIntensity, cvAoContrast, CvLabel("AoS", "Sampling"), cvAoSamplingCombo, CvLabel("AoQ", "Quality"), cvAoQualityCombo);
 		cvSettingsCard.Controls.Add(cvPanelN2H);
 		cvSettingsCard.Controls.Add(cvPanelH2N);
 		cvSettingsCard.Controls.Add(cvPanelAO);
@@ -647,6 +659,7 @@ public partial class MainForm
 		s.AoDepth = (float)cvAoDepth.Value;
 		s.AoIntensity = (float)cvAoIntensity.Value;
 		s.AoContrast = (float)cvAoContrast.Value;
+		s.AoSampling = cvAoSamplingCombo.SelectedIndex == 1 ? ConvertCore.AoSampling.Classic : ConvertCore.AoSampling.Detailed;
 		s.AoDirections = cvAoQualityCombo.SelectedIndex switch
 		{
 			0 => 8,
